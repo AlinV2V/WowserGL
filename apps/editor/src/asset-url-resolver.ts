@@ -46,7 +46,7 @@ const loadScope = async (scope: string) => {
   if (!pending) {
     pending = fetch(descriptor.url, { cache: 'force-cache' })
       .then(async (response) => response.ok ? await response.json() as TextureRegistry : { assets: {} })
-      .then((registry) => Object.assign(assets, registry.assets ?? {}))
+      .then((registry) => { Object.assign(assets, registry.assets ?? {}); })
       .finally(() => {
         loadedScopes.add(scope);
         scopePromises.delete(scope);
