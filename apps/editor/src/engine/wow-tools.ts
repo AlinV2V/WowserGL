@@ -135,6 +135,23 @@ export class WowWorldTools extends EventTarget {
         this.helperRoot.add(handle);
       });
     }
+    const creature = this.components.getComponent(entity, 'CreatureSpawn');
+    if (creature && String(creature.data.movementMode ?? 'idle') === 'random') {
+      const radius = Math.max(0, Number(creature.data.wanderDistance ?? 5));
+      if (radius > 0) {
+        const segments = 64;
+        const points: THREE.Vector3[] = [];
+        const center = record.object.getWorldPosition(new THREE.Vector3());
+        for (let index = 0; index <= segments; index++) {
+          const angle = index / segments * Math.PI * 2;
+          points.push(new THREE.Vector3(center.x + Math.cos(angle) * radius, center.y + Math.sin(angle) * radius, center.z + 0.08));
+        }
+        const ring = new THREE.Line(new THREE.BufferGeometry().setFromPoints(points), new THREE.LineBasicMaterial({ transparent: true, opacity: 0.8 }));
+        ring.userData.editorNonSelectable = true;
+        ring.name = `Creature Wander Radius ${radius.toFixed(1)} yd`;
+        this.helperRoot.add(ring);
+      }
+    }
     const trigger = this.components.getComponent(entity, 'AreaTrigger');
     if (trigger) {
       const radius = Math.max(0.1, Number(trigger.data.radius ?? 5));
