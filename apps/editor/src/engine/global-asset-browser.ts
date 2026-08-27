@@ -19,9 +19,11 @@ export type GlobalAssetEntry = {
   metadata?: Record<string, unknown>;
 };
 
+type SpawnableAssetEntry = GlobalAssetEntry & { kind: 'm2' | 'wmo' | 'creature' };
+type WorldAssetEntry = GlobalAssetEntry & { kind: 'm2' | 'wmo' };
 type AssetIndex = { version: 1; generatedAt: string | null; source: string | null; assets: GlobalAssetEntry[] };
 const normalize = (value: string) => value.replaceAll('\\', '/').toLowerCase();
-const spawnable = (entry: GlobalAssetEntry): entry is GlobalAssetEntry & { kind: 'm2' | 'wmo' | 'creature' } => entry.kind === 'm2' || entry.kind === 'wmo' || entry.kind === 'creature';
+const spawnable = (entry: GlobalAssetEntry): entry is SpawnableAssetEntry => entry.kind === 'm2' || entry.kind === 'wmo' || entry.kind === 'creature';
 const FAVORITES_KEY = 'wowsergl:content-favorites:v1';
 const RECENTS_KEY = 'wowsergl:content-recents:v1';
 
@@ -120,7 +122,7 @@ export class GlobalAssetBrowser extends EventTarget {
       row.querySelector('small')!.textContent = entry.kind === 'creature' ? `${entry.model} · display ${entry.displayId ?? '?'}` : `${entry.model}${entry.representativeTile ? ` · ${entry.representativeTile}` : ''}`;
       row.title = spawnable(entry) ? 'Double-click or drag into Scene to place' : 'Click to preview';
       row.querySelector('.global-asset-main')!.addEventListener('click', () => { this.touchRecent(entry.id); this.showPreview(entry); });
-      if (spawnable(entry)) row.querySelector('.global-asset-main')!.addEventListener('dblclick', () => void this.spawn(entry));
+      if (spawnable(entry)) row.querySelector('.global-asset-main')!.addEventListener('dblclick', () => void this.spawnSafely(entry));
       row.querySelector('.global-favorite')!.addEventListener('click', (event) => { event.stopPropagation(); this.toggleFavorite(entry.id); this.render(); });
       row.addEventListener('dragstart', (event) => {
         if (!spawnable(entry)) { event.preventDefault(); return; }
@@ -174,7 +176,7 @@ export class GlobalAssetBrowser extends EventTarget {
       const place = document.createElement('button');
       place.className = 'accent content-place-button';
       place.textContent = 'Place at Scene Focus';
-      place.addEventListener('click', () => void this.spawn(entry));
+      place.addEventListener('click', () => void this.spawnSafely(entry));
       this.preview.append(place);
     }
 
@@ -195,7 +197,7 @@ export class GlobalAssetBrowser extends EventTarget {
     this.preview.append(details);
   }
 
-  private async spawn(entry: GlobalAssetEntry & { kind: 'm2' | 'wmo' | 'creature' }, position?: THREE.Vector3) {
+  private async spawn(entry: SpawnableAssetEntry, position?: THREE.Vector3) {
     const asset = await this.resolve(entry);
     const target = position ?? this.ground(this.app.camera.orbit.target.x, this.app.camera.orbit.target.y) ?? this.app.camera.orbit.target.clone();
     const record = this.app.store.addFromAsset(asset, target, this.app.store.tileKey);
@@ -207,19 +209,27 @@ export class GlobalAssetBrowser extends EventTarget {
     return record;
   }
 
-  private resolve(entry: GlobalAssetEntry & { kind: 'm2' | 'wmo' | 'creature' }) {
+  private async spawnSafely(entry: SpawnableAssetEntry, position?: THREE.Vector3) {
+    try {
+      return await this.spawn(entry, position);
+    } catch (error) {
+      this.app.bottomPanel.log({ level: 'error', message: `Asset placement failed: ${error instanceof Error ? error.message : String(error)}`, time: new Date() });
+      return null;
+    }
+  }
+
+  private resolve(entry: SpawnableAssetEntry) {
     let pending = this.assetCache.get(entry.id);
     if (!pending) {
-      pending = entry.kind === 'creature'
-        ? this.creatures.load(Number(entry.displayId), entry.model)
-        : this.resolveWorldAsset(entry);
+      if (entry.kind === 'creature') pending = this.creatures.load(Number(entry.displayId), entry.model);
+      else pending = this.resolveWorldAsset(entry as WorldAssetEntry);
       this.assetCache.set(entry.id, pending);
       pending.catch(() => this.assetCache.delete(entry.id));
     }
     return pending;
   }
 
-  private async resolveWorldAsset(entry: GlobalAssetEntry & { kind: 'm2' | 'wmo' }) {
+  private async resolveWorldAsset(entry: WorldAssetEntry) {
     if (!entry.representativeTile) throw new Error(`No representative tile is indexed for ${entry.model}`);
     let tile = this.tileCache.get(entry.representativeTile);
     if (!tile) {
@@ -248,7 +258,7 @@ export class GlobalAssetBrowser extends EventTarget {
       const entry = this.index.assets.find((candidate) => candidate.id === id);
       if (!entry || !spawnable(entry)) return;
       const point = this.groundFromScreen(event.clientX, event.clientY);
-      void this.spawn(entry, point ?? undefined).catch((error) => this.app.bottomPanel.log({ level: 'error', message: `Asset placement failed: ${error instanceof Error ? error.message : String(error)}`, time: new Date() }));
+      void this.spawnSafely(entry, point ?? undefined);
     }, true);
   }
 
