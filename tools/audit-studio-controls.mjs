@@ -102,9 +102,10 @@ has(bridgeServer, "client.role === 'runtime' && (packet.type === 'bridge.ack'", 
 has(bridgeServer, "packet.type === 'project.save'", 'project persistence backend');
 has(bridgeServer, "writeFile(projectPath", 'project file write');
 
-// UI placeholders that are intentionally unsupported must not remain visible.
-has(shell, "querySelector('[data-lock]')?.remove()", 'Inspector lock placeholder removal');
-has(shell, "querySelectorAll('.inspector-panel .component-menu')", 'component menu placeholder removal');
+// Unsupported placeholders are removed at source, not hidden by a later cleanup pass.
+lacks(inspector, 'data-lock', 'unsupported Inspector lock button');
+lacks(inspector, 'component-menu', 'unsupported Inspector component menu button');
+lacks(shell, 'removeUnsupportedDecorativeButtons', 'runtime placeholder-removal workaround');
 has(foundation, 'new StudioShellControls', 'audited shell controller installation');
 
 console.log(`[engine-test] audited ${menus.length} menus, primary shell controls, editor windows and ${commandTypes.length} live command families`);
