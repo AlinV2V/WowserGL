@@ -1,12 +1,13 @@
-import * as THREE from 'three';
 import type { EditorCameraController } from '../editor-camera';
 import type { EditorObjectStore } from '../editor-store';
 import type { EditorRecord } from '../types';
-import type { SceneComponentModel, StudioEntity } from './component-model';
+import type { SceneComponentModel } from './component-model';
 
 export type StudioLayer = { id: string; name: string; visible: boolean; locked: boolean };
 export type StudioBookmark = { id: string; name: string; position: [number, number, number]; quaternion: [number, number, number, number]; target: [number, number, number] };
-export type StudioPrefab = { id: string; name: string; model: string; kind: EditorRecord['kind']; entity: ReturnType<SceneComponentModel['serializeEntity']>; createdAt: string };
+export type SerializedStudioEntity = ReturnType<SceneComponentModel['serializeEntity']>;
+export type StudioPrefab = { id: string; name: string; model: string; kind: EditorRecord['kind']; entity: SerializedStudioEntity; createdAt: string };
+export type StudioEntityBinding = { sourceKey: string; entity: SerializedStudioEntity };
 
 export type StudioProjectDocument = {
   version: 2;
@@ -16,7 +17,8 @@ export type StudioProjectDocument = {
   mapId: number;
   tileKey: string;
   savedAt: string;
-  entities: Array<ReturnType<SceneComponentModel['serializeEntity']>>;
+  entities: SerializedStudioEntity[];
+  bindings: StudioEntityBinding[];
   layers: StudioLayer[];
   bookmarks: StudioBookmark[];
   prefabs: StudioPrefab[];
@@ -26,6 +28,7 @@ export type StudioProjectDocument = {
 const STORAGE = 'wowsergl:project:v2';
 const RECOVERY = 'wowsergl:recovery:v2';
 const uuid = () => crypto.randomUUID?.() ?? `studio-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+const sourceKey = (record: EditorRecord) => `${record.tileKey}|${record.kind}|${record.model.replaceAll('\\', '/').toLowerCase()}|${record.sourceId ?? record.id}`;
 
 const defaultLayers = (): StudioLayer[] => [
   { id: 'World', name: 'World', visible: true, locked: false },
@@ -43,21 +46,33 @@ export class ProjectWorkspace extends EventTarget {
   settings = { autosave: true, liveSyncPreferred: false, authoritativeGameView: true };
   private saveTimer = 0;
   private recoveryTimer = 0;
+  private savedBindings = new Map<string, SerializedStudioEntity>();
+  private restoredRecords = new Set<string>();
   recoveryAvailable = false;
 
   constructor(private readonly store: EditorObjectStore, private readonly components: SceneComponentModel) {
     super();
     this.loadMetadata();
     this.recoveryAvailable = this.hasNewerRecovery();
-    const dirty = () => this.scheduleSave();
-    store.addEventListener('change', dirty);
-    components.addEventListener('change', dirty);
+    const storeChanged = () => {
+      this.restoreComponentState();
+      this.scheduleSave();
+    };
+    store.addEventListener('change', storeChanged);
+    components.addEventListener('change', () => this.scheduleSave());
+    this.restoreComponentState();
     this.recoveryTimer = window.setInterval(() => this.writeRecovery(), 12000);
     window.addEventListener('beforeunload', () => { this.writeRecovery(); window.clearInterval(this.recoveryTimer); });
   }
 
   snapshot(): StudioProjectDocument {
     const params = new URLSearchParams(location.search);
+    const entities = [...this.components.entities.values()].map((entity) => this.components.serializeEntity(entity));
+    const bindings: StudioEntityBinding[] = [];
+    for (const record of this.store.records.values()) {
+      const entity = this.components.entities.get(record.id);
+      if (entity) bindings.push({ sourceKey: sourceKey(record), entity: this.components.serializeEntity(entity) });
+    }
     return {
       version: 2,
       format: 'wowsergl-studio-project',
@@ -66,7 +81,8 @@ export class ProjectWorkspace extends EventTarget {
       mapId: Number(params.get('map') ?? 0),
       tileKey: this.store.tileKey,
       savedAt: new Date().toISOString(),
-      entities: [...this.components.entities.values()].map((entity) => this.components.serializeEntity(entity)),
+      entities,
+      bindings,
       layers: this.layers.map((layer) => ({ ...layer })),
       bookmarks: this.bookmarks.map((bookmark) => ({ ...bookmark, position: [...bookmark.position], quaternion: [...bookmark.quaternion], target: [...bookmark.target] })),
       prefabs: this.prefabs.map((prefab) => structuredClone(prefab)),
@@ -75,18 +91,19 @@ export class ProjectWorkspace extends EventTarget {
   }
 
   save() {
-    const document = this.snapshot();
-    localStorage.setItem(STORAGE, JSON.stringify(document));
+    const project = this.snapshot();
+    localStorage.setItem(STORAGE, JSON.stringify(project));
     localStorage.removeItem(RECOVERY);
+    this.savedBindings = new Map(project.bindings.map((binding) => [binding.sourceKey, structuredClone(binding.entity)]));
     this.recoveryAvailable = false;
-    this.dispatchEvent(new CustomEvent('saved', { detail: document }));
-    return document;
+    this.dispatchEvent(new CustomEvent('saved', { detail: project }));
+    return project;
   }
 
   exportFile() {
-    const document = this.save();
-    const url = URL.createObjectURL(new Blob([JSON.stringify(document, null, 2)], { type: 'application/json' }));
-    const anchor = document.createElement('a');
+    const project = this.save();
+    const url = URL.createObjectURL(new Blob([JSON.stringify(project, null, 2)], { type: 'application/json' }));
+    const anchor = globalThis.document.createElement('a');
     anchor.href = url;
     anchor.download = `${this.name.replace(/[^a-z0-9_-]+/gi, '_').toLowerCase() || 'wowsergl_project'}.wowsergl.json`;
     anchor.click();
@@ -159,9 +176,11 @@ export class ProjectWorkspace extends EventTarget {
     const raw = localStorage.getItem(RECOVERY);
     if (!raw) return false;
     try {
-      const document = JSON.parse(raw) as StudioProjectDocument;
-      if (document.version !== 2) return false;
-      this.applyMetadata(document);
+      const project = JSON.parse(raw) as StudioProjectDocument;
+      if (project.version !== 2) return false;
+      this.applyMetadata(project);
+      this.restoredRecords.clear();
+      this.restoreComponentState();
       this.recoveryAvailable = false;
       localStorage.setItem(STORAGE, raw);
       localStorage.removeItem(RECOVERY);
@@ -170,22 +189,37 @@ export class ProjectWorkspace extends EventTarget {
     } catch { return false; }
   }
 
+  private restoreComponentState() {
+    if (!this.savedBindings.size) return;
+    for (const record of this.store.records.values()) {
+      if (this.restoredRecords.has(record.id)) continue;
+      const snapshot = this.savedBindings.get(sourceKey(record));
+      if (!snapshot) continue;
+      this.restoredRecords.add(record.id);
+      this.components.hydrateEntity(record, snapshot);
+    }
+  }
+
   private loadMetadata() {
     const raw = localStorage.getItem(STORAGE);
     if (!raw) return;
     try {
-      const document = JSON.parse(raw) as StudioProjectDocument;
-      if (document.version === 2 && document.format === 'wowsergl-studio-project') this.applyMetadata(document);
+      const project = JSON.parse(raw) as StudioProjectDocument;
+      if (project.version === 2 && project.format === 'wowsergl-studio-project') this.applyMetadata(project);
     } catch { /* malformed local workspace is ignored */ }
   }
 
-  private applyMetadata(document: StudioProjectDocument) {
-    this.projectId = document.projectId || this.projectId;
-    this.name = document.name || this.name;
-    this.layers = document.layers?.length ? document.layers.map((layer) => ({ ...layer })) : defaultLayers();
-    this.bookmarks = (document.bookmarks ?? []).map((bookmark) => structuredClone(bookmark));
-    this.prefabs = (document.prefabs ?? []).map((prefab) => structuredClone(prefab));
-    this.settings = { ...this.settings, ...(document.settings ?? {}) };
+  private applyMetadata(project: StudioProjectDocument) {
+    this.projectId = project.projectId || this.projectId;
+    this.name = project.name || this.name;
+    this.layers = project.layers?.length ? project.layers.map((layer) => ({ ...layer })) : defaultLayers();
+    this.bookmarks = (project.bookmarks ?? []).map((bookmark) => structuredClone(bookmark));
+    this.prefabs = (project.prefabs ?? []).map((prefab) => structuredClone(prefab));
+    this.settings = { ...this.settings, ...(project.settings ?? {}) };
+    const bindings = project.bindings?.length
+      ? project.bindings
+      : (project.entities ?? []).map((entity) => ({ sourceKey: `${entity.tileKey}|${entity.kind}|legacy|${entity.recordId}`, entity }));
+    this.savedBindings = new Map(bindings.map((binding) => [binding.sourceKey, structuredClone(binding.entity)]));
   }
 
   private scheduleSave() {
