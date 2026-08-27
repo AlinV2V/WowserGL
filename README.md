@@ -71,13 +71,13 @@ http://localhost:5180/?tile=Azeroth_30_49&map=0
 
 ## Live material example
 
-Select a WMO building or M2 object, open **Renderer / Materials**, choose a material, then change its tint or enter a texture override such as:
+Select a WMO building or M2 object, open **Renderer / Materials**, choose a material, then change its tint or enter a browser-decodable custom texture override such as:
 
 ```text
-/textures/custom/red_flag.ktx2
+/textures/custom/red_flag.png
 ```
 
-Use **Apply Preview** to change Studio only, **Push to Game** to update the live VanillaGL scene, or enable **Live Sync** so edits are pushed automatically. **Save Project** makes the overrides persistent without touching the source WMO/M2.
+Use **Apply Preview** to change Studio only, **Push to Game** to update the live VanillaGL scene, or enable **Live Sync** so edits are pushed automatically. **Save Project** makes the overrides persistent without touching the source WMO/M2. Registered VanillaGL texture assets can still use the project's normal optimized/KTX2 routing; arbitrary new custom files should use PNG/WebP unless they are added to that asset routing manifest.
 
 ## Architecture
 
