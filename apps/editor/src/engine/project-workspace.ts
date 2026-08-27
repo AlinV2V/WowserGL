@@ -6,8 +6,9 @@ import type { SceneComponentModel } from './component-model';
 export type StudioLayer = { id: string; name: string; visible: boolean; locked: boolean };
 export type StudioBookmark = { id: string; name: string; position: [number, number, number]; quaternion: [number, number, number, number]; target: [number, number, number] };
 export type SerializedStudioEntity = ReturnType<SceneComponentModel['serializeEntity']>;
-export type StudioPrefab = { id: string; name: string; model: string; kind: EditorRecord['kind']; entity: SerializedStudioEntity; createdAt: string };
+export type StudioPrefab = { id: string; name: string; model: string; kind: EditorRecord['kind']; entity: SerializedStudioEntity; createdAt: string; updatedAt?: string };
 export type StudioEntityBinding = { sourceKey: string; entity: SerializedStudioEntity };
+export type RecentStudioProject = { projectId: string; name: string; mapId: number; tileKey: string; savedAt: string };
 
 export type StudioProjectDocument = {
   version: 2;
@@ -27,6 +28,7 @@ export type StudioProjectDocument = {
 
 const STORAGE = 'wowsergl:project:v2';
 const RECOVERY = 'wowsergl:recovery:v2';
+const RECENTS = 'wowsergl:recent-projects:v2';
 const uuid = (): string => crypto.randomUUID?.() ?? `studio-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 const sourceKey = (record: EditorRecord) => `${record.tileKey}|${record.kind}|${record.model.replaceAll('\\', '/').toLowerCase()}|${record.sourceId ?? record.id}`;
 
@@ -37,12 +39,29 @@ const defaultLayers = (): StudioLayer[] => [
   { id: 'Debug', name: 'Debug', visible: true, locked: false },
 ];
 
+const prefabPayload = (entity: SerializedStudioEntity): SerializedStudioEntity => ({
+  ...structuredClone(entity),
+  parentId: undefined,
+  components: entity.components.filter((entry) => entry.type !== 'PrefabInstance').map((entry) => structuredClone(entry)),
+});
+
+const comparablePrefab = (entity: SerializedStudioEntity) => JSON.stringify({
+  name: entity.name,
+  layer: entity.layer,
+  tags: [...entity.tags].sort(),
+  components: entity.components
+    .filter((entry) => entry.type !== 'PrefabInstance')
+    .map((entry) => ({ type: entry.type, enabled: entry.enabled, data: entry.data }))
+    .sort((a, b) => a.type.localeCompare(b.type)),
+});
+
 export class ProjectWorkspace extends EventTarget {
   projectId: string = uuid();
   name = 'VanillaGL World';
   layers = defaultLayers();
   bookmarks: StudioBookmark[] = [];
   prefabs: StudioPrefab[] = [];
+  recentProjects: RecentStudioProject[] = [];
   settings = { autosave: true, liveSyncPreferred: false, authoritativeGameView: true };
   private saveTimer = 0;
   private recoveryTimer = 0;
@@ -52,6 +71,7 @@ export class ProjectWorkspace extends EventTarget {
 
   constructor(private readonly store: EditorObjectStore, private readonly components: SceneComponentModel) {
     super();
+    this.recentProjects = this.loadRecents();
     this.loadMetadata();
     this.recoveryAvailable = this.hasNewerRecovery();
     const storeChanged = () => {
@@ -96,8 +116,15 @@ export class ProjectWorkspace extends EventTarget {
     localStorage.removeItem(RECOVERY);
     this.savedBindings = new Map(project.bindings.map((binding) => [binding.sourceKey, structuredClone(binding.entity)]));
     this.recoveryAvailable = false;
+    this.rememberRecent(project);
     this.dispatchEvent(new CustomEvent('saved', { detail: project }));
     return project;
+  }
+
+  saveAs(name: string) {
+    const clean = name.trim();
+    if (clean) this.name = clean;
+    return this.save();
   }
 
   exportFile() {
@@ -110,21 +137,82 @@ export class ProjectWorkspace extends EventTarget {
     URL.revokeObjectURL(url);
   }
 
+  async importFile(file: File) {
+    const project = JSON.parse(await file.text()) as StudioProjectDocument;
+    if (project.version !== 2 || project.format !== 'wowsergl-studio-project') throw new Error('Unsupported WowserGL Studio workspace format.');
+    this.applyMetadata(project);
+    this.restoredRecords.clear();
+    this.restoreComponentState();
+    localStorage.setItem(STORAGE, JSON.stringify(project));
+    localStorage.removeItem(RECOVERY);
+    this.recoveryAvailable = false;
+    this.rememberRecent(project);
+    this.dispatchEvent(new CustomEvent('imported', { detail: project }));
+    this.dispatchEvent(new Event('change'));
+    return project;
+  }
+
   createPrefab(record: EditorRecord) {
     const entity = this.components.entities.get(record.id);
     if (!entity) return null;
+    const now = new Date().toISOString();
     const prefab: StudioPrefab = {
       id: uuid(),
       name: entity.name,
       model: record.model,
       kind: record.kind,
-      entity: this.components.serializeEntity(entity),
-      createdAt: new Date().toISOString(),
+      entity: prefabPayload(this.components.serializeEntity(entity)),
+      createdAt: now,
+      updatedAt: now,
     };
     this.prefabs.push(prefab);
+    this.components.addComponent(record, 'PrefabInstance', { prefabId: prefab.id, unpacked: false });
     this.scheduleSave();
     this.dispatchEvent(new CustomEvent('prefab', { detail: prefab }));
     return prefab;
+  }
+
+  prefabForRecord(record: EditorRecord) {
+    const entity = this.components.entities.get(record.id);
+    const instance = entity ? this.components.getComponent(entity, 'PrefabInstance') : null;
+    const id = String(instance?.data.prefabId ?? '');
+    return id ? this.prefabs.find((prefab) => prefab.id === id) ?? null : null;
+  }
+
+  isPrefabOverridden(record: EditorRecord) {
+    const prefab = this.prefabForRecord(record);
+    const entity = this.components.entities.get(record.id);
+    return !!prefab && !!entity && comparablePrefab(this.components.serializeEntity(entity)) !== comparablePrefab(prefab.entity);
+  }
+
+  applyInstanceToPrefab(record: EditorRecord) {
+    const prefab = this.prefabForRecord(record);
+    const entity = this.components.entities.get(record.id);
+    if (!prefab || !entity) return false;
+    prefab.entity = prefabPayload(this.components.serializeEntity(entity));
+    prefab.name = entity.name;
+    prefab.updatedAt = new Date().toISOString();
+    this.scheduleSave();
+    this.dispatchEvent(new CustomEvent('prefab-updated', { detail: prefab }));
+    return true;
+  }
+
+  revertPrefabInstance(record: EditorRecord) {
+    const prefab = this.prefabForRecord(record);
+    if (!prefab) return false;
+    const snapshot = prefabPayload(prefab.entity);
+    snapshot.components.push({ type: 'PrefabInstance', enabled: true, data: { prefabId: prefab.id, unpacked: false } });
+    this.components.hydrateEntity(record, snapshot);
+    this.scheduleSave();
+    return true;
+  }
+
+  unpackPrefab(record: EditorRecord) {
+    const prefab = this.prefabForRecord(record);
+    if (!prefab) return false;
+    this.components.removeComponent(record, 'PrefabInstance');
+    this.scheduleSave();
+    return true;
   }
 
   removePrefab(id: string) {
@@ -148,6 +236,13 @@ export class ProjectWorkspace extends EventTarget {
     this.scheduleSave();
     this.dispatchEvent(new Event('change'));
     return bookmark;
+  }
+
+  removeBookmark(id: string) {
+    const index = this.bookmarks.findIndex((bookmark) => bookmark.id === id);
+    if (index < 0) return;
+    this.bookmarks.splice(index, 1);
+    this.scheduleSave();
   }
 
   applyBookmark(camera: EditorCameraController, bookmark: StudioBookmark) {
@@ -227,7 +322,9 @@ export class ProjectWorkspace extends EventTarget {
     if (!this.settings.autosave) return;
     window.clearTimeout(this.saveTimer);
     this.saveTimer = window.setTimeout(() => {
-      localStorage.setItem(STORAGE, JSON.stringify(this.snapshot()));
+      const project = this.snapshot();
+      localStorage.setItem(STORAGE, JSON.stringify(project));
+      this.rememberRecent(project);
     }, 900);
   }
 
@@ -241,5 +338,18 @@ export class ProjectWorkspace extends EventTarget {
       const saved = JSON.parse(localStorage.getItem(STORAGE) ?? 'null') as StudioProjectDocument | null;
       return !!recovery && (!saved || new Date(recovery.savedAt).getTime() > new Date(saved.savedAt).getTime());
     } catch { return false; }
+  }
+
+  private loadRecents(): RecentStudioProject[] {
+    try {
+      const value = JSON.parse(localStorage.getItem(RECENTS) ?? '[]') as RecentStudioProject[];
+      return Array.isArray(value) ? value.slice(0, 8) : [];
+    } catch { return []; }
+  }
+
+  private rememberRecent(project: StudioProjectDocument) {
+    const entry: RecentStudioProject = { projectId: project.projectId, name: project.name, mapId: project.mapId, tileKey: project.tileKey, savedAt: project.savedAt };
+    this.recentProjects = [entry, ...this.recentProjects.filter((item) => item.projectId !== entry.projectId)].slice(0, 8);
+    localStorage.setItem(RECENTS, JSON.stringify(this.recentProjects));
   }
 }
