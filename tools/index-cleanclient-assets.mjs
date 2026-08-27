@@ -143,13 +143,14 @@ if (soundManifest?.entries && typeof soundManifest.entries === 'object') {
     const files = Array.isArray(entry?.files) ? entry.files.map(normalized).filter(Boolean) : [];
     const first = files[0];
     const previewUrl = first ? (/^\//.test(first) ? first : `/sounds/${first.replace(/^sounds\//, '')}`) : undefined;
+    const numericId = Number(id);
     upsert({
       kind: 'audio',
       model: String(entry?.name || id),
       category: 'audio',
       count: Math.max(1, files.length),
       previewUrl,
-      metadata: { soundId: entry?.id ?? Number(id) || id, files, loop: entry?.loop === true, volume: entry?.volume ?? 1 },
+      metadata: { soundId: entry?.id ?? (Number.isFinite(numericId) && numericId !== 0 ? numericId : id), files, loop: entry?.loop === true, volume: entry?.volume ?? 1 },
     });
   }
 }
