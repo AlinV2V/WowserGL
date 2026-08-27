@@ -13,8 +13,7 @@ export class StudioShellControls {
     this.bindViewportControls();
     this.bindBridgeBadge();
     this.bindProjectHome();
-    this.bindLegacyCardToggles();
-    this.removeUnsupportedDecorativeButtons();
+    this.bindCardToggles();
     this.correctTooltips();
   }
 
@@ -143,7 +142,7 @@ export class StudioShellControls {
     });
   }
 
-  private bindLegacyCardToggles() {
+  private bindCardToggles() {
     this.root.addEventListener('click', (event) => {
       const target = event.target;
       if (!(target instanceof HTMLSpanElement) || !target.classList.contains('component-toggle')) return;
@@ -153,13 +152,6 @@ export class StudioShellControls {
       body.hidden = !body.hidden;
       target.textContent = body.hidden ? '▸' : '▾';
     });
-  }
-
-  private removeUnsupportedDecorativeButtons() {
-    // These were visual placeholders from the first Unity-style shell and had no command model.
-    // Keep the UI truthful: no visible button exists unless it has an action path.
-    this.root.querySelector('[data-lock]')?.remove();
-    this.root.querySelectorAll('.inspector-panel .component-menu').forEach((button) => button.remove());
   }
 
   private correctTooltips() {
