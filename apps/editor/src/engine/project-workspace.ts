@@ -27,7 +27,7 @@ export type StudioProjectDocument = {
 
 const STORAGE = 'wowsergl:project:v2';
 const RECOVERY = 'wowsergl:recovery:v2';
-const uuid = () => crypto.randomUUID?.() ?? `studio-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+const uuid = (): string => crypto.randomUUID?.() ?? `studio-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 const sourceKey = (record: EditorRecord) => `${record.tileKey}|${record.kind}|${record.model.replaceAll('\\', '/').toLowerCase()}|${record.sourceId ?? record.id}`;
 
 const defaultLayers = (): StudioLayer[] => [
@@ -38,7 +38,7 @@ const defaultLayers = (): StudioLayer[] => [
 ];
 
 export class ProjectWorkspace extends EventTarget {
-  projectId = uuid();
+  projectId: string = uuid();
   name = 'VanillaGL World';
   layers = defaultLayers();
   bookmarks: StudioBookmark[] = [];
