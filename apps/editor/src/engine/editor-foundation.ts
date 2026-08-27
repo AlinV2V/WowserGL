@@ -50,8 +50,9 @@ export function installEngineEditorFoundation(app: EditorApp, root: HTMLElement)
   const hosts = new EngineHostRegistry(app);
   const simulation = new StudioSimulationClock(app, root);
   simulation.addEventListener('tick', (event) => {
-    const { dt } = (event as CustomEvent<{ dt: number }>).detail;
+    const { dt, elapsed } = (event as CustomEvent<{ dt: number; elapsed: number }>).detail;
     app.environment.update(dt, app.camera.active.position);
+    components.updateSimulation(dt, elapsed);
   });
   const plugins = new StudioPluginHost({ app, components, workspace, profiler, validator, debug });
   const componentInspector = new ComponentInspectorPanel(root, app.store, components, workspace);
