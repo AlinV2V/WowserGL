@@ -48,11 +48,11 @@ export class EditorInspector extends EventTarget {
   private mount() {
     const field = (key: string, label: string, axis: string, step: string) => `<label class="unity-axis ${axis}"><span>${label}</span><input data-field="${key}" type="number" step="${step}" /></label>`;
     this.container.innerHTML = `
-      <div class="inspector-header"><div><strong>Inspector</strong><small data-object-name>No Selection</small></div><button data-lock title="Lock Inspector">◇</button></div>
+      <div class="inspector-header"><div><strong>Inspector</strong><small data-object-name>No Selection</small></div></div>
       <div class="inspector-empty" data-empty>Select an object in Scene or Hierarchy.</div>
       <div class="inspector-content" data-content hidden>
         <section class="component-card transform-component">
-          <div class="component-head"><span class="component-toggle">▾</span><strong>Transform</strong><button class="component-menu">⋮</button></div>
+          <div class="component-head"><span class="component-toggle">▾</span><strong>Transform</strong></div>
           <div class="component-body">
             <div class="transform-row"><span>Position</span><div class="axis-row">${field('px','X','x','0.1')}${field('py','Y','y','0.1')}${field('pz','Z','z','0.1')}</div></div>
             <div class="transform-row"><span>Rotation</span><div class="axis-row">${field('rx','X','x','1')}${field('ry','Y','y','1')}${field('rz','Z','z','1')}</div></div>
@@ -61,7 +61,7 @@ export class EditorInspector extends EventTarget {
           </div>
         </section>
         <section class="component-card">
-          <div class="component-head"><span class="component-toggle">▾</span><strong>VanillaGL Object</strong><button class="component-menu">⋮</button></div>
+          <div class="component-head"><span class="component-toggle">▾</span><strong>VanillaGL Object</strong></div>
           <div class="component-body metadata" data-metadata></div>
         </section>
         <section class="component-card live-component">
