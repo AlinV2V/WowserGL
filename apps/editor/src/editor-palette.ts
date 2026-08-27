@@ -27,8 +27,8 @@ export class EditorPalette extends EventTarget {
       <div class="panel-title">Asset Browser</div>
       <input class="search" data-search type="search" placeholder="Search M2 / WMO models..." />
       <div class="asset-list" data-list></div>`;
-    this.search = this.container.querySelector('[data-search]')!;
-    this.list = this.container.querySelector('[data-list]')!;
+    this.search = this.container.querySelector<HTMLInputElement>('[data-search]')!;
+    this.list = this.container.querySelector<HTMLElement>('[data-list]')!;
     this.search.addEventListener('input', () => this.applyFilter());
   }
 

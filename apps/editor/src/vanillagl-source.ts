@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { TILE_HALF, TILE_SIZE, type EditorAsset, type LoadedEditorTile, type TileMeta } from './types';
+import { loadWmoBinary } from './wmo-binary';
 
 type DoodadManifest = {
   textures?: string[];
@@ -44,12 +45,13 @@ export class VanillaGLAssetSource {
 
   async loadTile(tileKey: string, mapId = 0): Promise<LoadedEditorTile> {
     const base = `${this.assetBase}/terrain/tiles/${tileKey}`;
+    const wmoPromise = (async () => (await loadWmoBinary(base)) ?? await optionalJson<WmoManifest>(`${base}/wmos.json`))();
     const [metaResponse, heightResponse, doodads, wmoDoodads, wmos] = await Promise.all([
       fetch(`${base}/meta.json`),
       fetch(`${base}/heights.f32`),
       optionalJson<DoodadManifest>(`${base}/doodads.json`),
       optionalJson<DoodadManifest>(`${base}/wmo_doodads.json`),
-      optionalJson<WmoManifest>(`${base}/wmos.json`),
+      wmoPromise,
     ]);
     if (!metaResponse.ok) throw new Error(`meta.json HTTP ${metaResponse.status}`);
     if (!heightResponse.ok) throw new Error(`heights.f32 HTTP ${heightResponse.status}`);

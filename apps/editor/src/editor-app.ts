@@ -27,19 +27,18 @@ export class EditorApp {
   private tile: LoadedEditorTile | null = null;
   private cursor = new THREE.Vector3();
   private hasCursor = false;
-  private frame = 0;
   private lastTime = performance.now();
   private viewport: HTMLElement;
-  private status!: HTMLElement;
-  private tileInput!: HTMLInputElement;
-  private mapInput!: HTMLInputElement;
+  private status: HTMLElement;
+  private tileInput: HTMLInputElement;
+  private mapInput: HTMLInputElement;
 
   constructor(private readonly root: HTMLElement) {
     root.innerHTML = this.shell();
-    this.viewport = root.querySelector('[data-viewport]')!;
-    this.status = root.querySelector('[data-status]')!;
-    this.tileInput = root.querySelector('[data-tile]')!;
-    this.mapInput = root.querySelector('[data-map]')!;
+    this.viewport = root.querySelector<HTMLElement>('[data-viewport]')!;
+    this.status = root.querySelector<HTMLElement>('[data-status]')!;
+    this.tileInput = root.querySelector<HTMLInputElement>('[data-tile]')!;
+    this.mapInput = root.querySelector<HTMLInputElement>('[data-map]')!;
 
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
@@ -49,14 +48,14 @@ export class EditorApp {
     this.camera = new EditorCameraController(this.renderer.domElement);
     this.environment = new EditorEnvironment(this.scene);
     this.gizmo = new EditorGizmoController(this.scene, this.renderer.domElement, this.camera, this.store, this.history);
-    this.palette = new EditorPalette(root.querySelector('[data-palette]')!);
+    this.palette = new EditorPalette(root.querySelector<HTMLElement>('[data-palette]')!);
     this.inspector = new EditorInspector(
-      root.querySelector('[data-inspector]')!,
+      root.querySelector<HTMLElement>('[data-inspector]')!,
       this.store,
       this.history,
       (x, y) => this.tile?.sampleHeightWorld(x, y) ?? 0,
     );
-    this.environment.mountControls(root.querySelector('[data-environment]')!);
+    this.environment.mountControls(root.querySelector<HTMLElement>('[data-environment]')!);
 
     this.addEditorHelpers();
     this.bindUi();
@@ -100,7 +99,7 @@ export class EditorApp {
         </header>
         <aside class="left-panel panel" data-palette></aside>
         <section class="viewport" data-viewport>
-          <div class="viewport-help">RMB look · WASD fly · Shift boost · wheel speed · Alt orbit · F focus</div>
+          <div class="viewport-help">RMB look · WASD fly · Shift boost · Space/C vertical · wheel speed · Alt orbit · F focus</div>
           <div class="viewport-badge">WebGL2 / Three.js r176</div>
         </section>
         <aside class="right-panel">
@@ -125,9 +124,7 @@ export class EditorApp {
   }
 
   private bindUi() {
-    this.root.querySelector('[data-load]')!.addEventListener('click', () => {
-      void this.loadTile(this.tileInput.value.trim(), Number(this.mapInput.value || 0));
-    });
+    this.root.querySelector('[data-load]')!.addEventListener('click', () => void this.loadTile(this.tileInput.value.trim(), Number(this.mapInput.value || 0)));
     this.tileInput.addEventListener('keydown', (event) => {
       if (event.key === 'Enter') void this.loadTile(this.tileInput.value.trim(), Number(this.mapInput.value || 0));
     });
@@ -217,12 +214,7 @@ export class EditorApp {
       loaded.group.traverse((object) => {
         const meta = object.userData.editorMeta;
         if (!meta) return;
-        this.store.registerExisting(object, {
-          kind: meta.kind,
-          model: meta.model,
-          tileKey: meta.tileKey,
-          sourceId: meta.sourceId,
-        });
+        this.store.registerExisting(object, { kind: meta.kind, model: meta.model, tileKey: meta.tileKey, sourceId: meta.sourceId });
       });
       this.palette.setAssets(loaded.assets);
       const center = loaded.group.position.clone();
@@ -231,7 +223,7 @@ export class EditorApp {
       this.camera.perspective.position.copy(center).add(new THREE.Vector3(90, 90, 65));
       this.camera.perspective.lookAt(center);
       this.hasCursor = false;
-      history.replaceState(null, '', `?tile=${encodeURIComponent(tileKey)}&map=${mapId}`);
+      window.history.replaceState(null, '', `?tile=${encodeURIComponent(tileKey)}&map=${mapId}`);
       this.setStatus(`Loaded ${tileKey}: ${loaded.assets.length} reusable M2/WMO assets.`);
     } catch (error) {
       this.setStatus(`Load failed: ${(error as Error).message}`);
@@ -264,7 +256,6 @@ export class EditorApp {
     };
     patch.customDoodads.forEach((object) => spawnSerialized(object, 'm2'));
     patch.customWmos.forEach((object) => spawnSerialized(object, 'wmo'));
-
     for (const deleted of patch.deletedObjects ?? []) {
       const record = [...this.store.records.values()].find((candidate) => candidate.tileKey === patch.tileKey && String(candidate.sourceId ?? candidate.id) === deleted.id);
       if (record) this.store.remove(record);
@@ -285,9 +276,7 @@ export class EditorApp {
   private applyWorldTransform(object: THREE.Object3D, serialized: SerializedObject) {
     const worldPosition = new THREE.Vector3().fromArray(serialized.position);
     const worldQuaternion = new THREE.Quaternion().fromArray(serialized.rotation);
-    const worldScale = typeof serialized.scale === 'number'
-      ? new THREE.Vector3(serialized.scale, serialized.scale, serialized.scale)
-      : new THREE.Vector3().fromArray(serialized.scale);
+    const worldScale = typeof serialized.scale === 'number' ? new THREE.Vector3(serialized.scale, serialized.scale, serialized.scale) : new THREE.Vector3().fromArray(serialized.scale);
     if (object.parent) {
       object.parent.updateWorldMatrix(true, false);
       object.position.copy(object.parent.worldToLocal(worldPosition.clone()));
@@ -308,10 +297,7 @@ export class EditorApp {
   private raycastTerrain(clientX: number, clientY: number) {
     if (!this.tile) return null;
     const rect = this.renderer.domElement.getBoundingClientRect();
-    const pointer = new THREE.Vector2(
-      ((clientX - rect.left) / rect.width) * 2 - 1,
-      -((clientY - rect.top) / rect.height) * 2 + 1,
-    );
+    const pointer = new THREE.Vector2(((clientX - rect.left) / rect.width) * 2 - 1, -((clientY - rect.top) / rect.height) * 2 + 1);
     const raycaster = new THREE.Raycaster();
     raycaster.setFromCamera(pointer, this.camera.active);
     return raycaster.intersectObject(this.tile.terrain, false)[0]?.point.clone() ?? null;
@@ -325,7 +311,7 @@ export class EditorApp {
   }
 
   private loop = () => {
-    this.frame = requestAnimationFrame(this.loop);
+    requestAnimationFrame(this.loop);
     const now = performance.now();
     const dt = Math.min(0.05, (now - this.lastTime) / 1000);
     this.lastTime = now;
@@ -337,7 +323,7 @@ export class EditorApp {
   private updateStatus() {
     if (!this.tile) return;
     const selected = this.store.selected;
-    const changed = [...this.store.records.values()].filter((record) => record.tileKey === this.tile!.key && record.state !== 'existing').length;
+    const changed = [...this.store.records.values()].filter((record) => record.tileKey === this.tile!.key && record.state !== 'existing' && record.object.visible).length;
     const cursor = this.hasCursor ? ` · Cursor ${this.cursor.x.toFixed(1)}, ${this.cursor.y.toFixed(1)}, ${this.cursor.z.toFixed(1)}` : '';
     this.setStatus(`${this.tile.key} · ${selected ? selected.model.split(/[\\/]/).pop() : 'No selection'} · ${changed} patch change${changed === 1 ? '' : 's'} · Fly ${this.camera.speed.toFixed(0)} yd/s${cursor}`);
   }

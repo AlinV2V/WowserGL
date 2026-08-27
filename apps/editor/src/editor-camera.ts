@@ -54,8 +54,8 @@ export class EditorCameraController extends EventTarget {
     if (this.keys.has('KeyS')) move.x -= 1;
     if (this.keys.has('KeyD')) move.y += 1;
     if (this.keys.has('KeyA')) move.y -= 1;
-    if (this.keys.has('KeyQ')) move.z -= 1;
-    if (this.keys.has('KeyE')) move.z += 1;
+    if (this.keys.has('Space')) move.z += 1;
+    if (this.keys.has('KeyC') || this.keys.has('ControlLeft') || this.keys.has('ControlRight')) move.z -= 1;
     if (move.lengthSq() === 0) return;
     move.normalize();
     const forward = new THREE.Vector3(Math.cos(this.yaw), Math.sin(this.yaw), 0);

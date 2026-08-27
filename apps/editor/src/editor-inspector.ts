@@ -53,7 +53,7 @@ export class EditorInspector {
       this.fields.set(input.dataset.field!, input);
       input.addEventListener('change', () => this.commitFields());
     }
-    this.metadata = this.container.querySelector('[data-metadata]')!;
+    this.metadata = this.container.querySelector<HTMLElement>('[data-metadata]')!;
     this.container.querySelector('[data-ground]')!.addEventListener('click', () => this.alignGround());
     this.container.querySelector('[data-reset]')!.addEventListener('click', () => this.mutate('Reset rotation', (o) => o.quaternion.identity()));
     this.container.querySelector('[data-grid]')!.addEventListener('click', () => this.mutate('Snap to grid', (o) => {
@@ -65,8 +65,8 @@ export class EditorInspector {
 
   private setRecord(record: EditorRecord | null) {
     this.record = record;
-    (this.container.querySelector('[data-empty]') as HTMLElement).hidden = !!record;
-    (this.container.querySelector('[data-content]') as HTMLElement).hidden = !record;
+    this.container.querySelector<HTMLElement>('[data-empty]')!.hidden = !!record;
+    this.container.querySelector<HTMLElement>('[data-content]')!.hidden = !record;
     this.refresh();
   }
 

@@ -1,13 +1,13 @@
 import * as THREE from 'three';
 import type { EditorObjectStore } from './editor-store';
-import type { CustomMapPatch, EnvironmentState, SerializedObject } from './types';
+import type { CustomMapPatch, EditorRecord, EnvironmentState, SerializedObject } from './types';
 
 const serializeScale = (scale: THREE.Vector3): number | [number, number, number] => {
   if (Math.abs(scale.x - scale.y) < 1e-5 && Math.abs(scale.x - scale.z) < 1e-5) return Number(scale.x.toFixed(6));
   return scale.toArray().map((v) => Number(v.toFixed(6))) as [number, number, number];
 };
 
-const serializeObject = (record: ReturnType<EditorObjectStore['records']['values']> extends IterableIterator<infer T> ? T : never): SerializedObject => {
+const serializeObject = (record: EditorRecord): SerializedObject => {
   const position = new THREE.Vector3();
   const quaternion = new THREE.Quaternion();
   const scale = new THREE.Vector3();
@@ -29,10 +29,10 @@ export class EditorSerializer {
       version: 1,
       mapId,
       tileKey,
-      customDoodads: records.filter((r) => r.state === 'added' && r.kind === 'm2').map(serializeObject),
-      customWmos: records.filter((r) => r.state === 'added' && r.kind === 'wmo').map(serializeObject),
+      customDoodads: records.filter((r) => r.state === 'added' && r.object.visible && r.kind === 'm2').map(serializeObject),
+      customWmos: records.filter((r) => r.state === 'added' && r.object.visible && r.kind === 'wmo').map(serializeObject),
       deletedObjects: records.filter((r) => r.state === 'deleted').map((r) => ({ id: String(r.sourceId ?? r.id), kind: r.kind, model: r.model.replaceAll('\\', '/') })),
-      modifiedObjects: records.filter((r) => r.state === 'modified').map(serializeObject),
+      modifiedObjects: records.filter((r) => r.state === 'modified' && r.object.visible).map(serializeObject),
       environment: environment ? { ...environment } : undefined,
     };
   }
