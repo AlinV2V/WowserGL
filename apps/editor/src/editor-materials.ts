@@ -103,7 +103,7 @@ export class EditorMaterialInspector extends EventTarget {
         <div class="material-title"><span class="material-swatch" style="background:${existing?.color ?? colorHex(row.material)}"></span><strong>${materialName(row.material, index)}</strong><span>#${row.locator.slot}</span></div>
         <div class="material-controls">
           <label><span>Tint</span><input data-color type="color" value="${existing?.color ?? colorHex(row.material)}" /></label>
-          <label class="material-texture"><span>Texture override</span><input data-texture value="${existing?.textureUrl ?? ''}" placeholder="/textures/custom/red_flag.ktx2" spellcheck="false" /></label>
+          <label class="material-texture"><span>Texture override</span><input data-texture value="${existing?.textureUrl ?? ''}" placeholder="/textures/custom/red_flag.png" spellcheck="false" /></label>
           <label><span>Scope</span><select data-scope><option value="instance"${existing?.scope !== 'asset' ? ' selected' : ''}>This object</option><option value="asset"${existing?.scope === 'asset' ? ' selected' : ''}>All same asset</option></select></label>
           <div class="material-actions"><button data-preview>Apply Preview</button><button class="accent" data-push>Push to Game</button></div>
         </div>`;
