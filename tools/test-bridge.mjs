@@ -9,6 +9,7 @@ import { WebSocket } from 'ws';
 const root = resolve(new URL('..', import.meta.url).pathname.replace(/^\/(?:([A-Za-z]):)/, '$1:'));
 const temp = mkdtempSync(join(tmpdir(), 'wowsergl-bridge-'));
 const projectPath = join(temp, 'live-project.json');
+const wire = (value) => JSON.parse(JSON.stringify(value));
 
 const freePort = () => new Promise((resolvePort, reject) => {
   const server = net.createServer();
@@ -139,7 +140,7 @@ try {
     const id = `command-${index}-${command.type}`;
     send(studio, { type: 'bridge.command', id, command, persist: command.type === 'project.apply' });
     const forwarded = await runtimeInbox.wait((packet) => packet.type === 'bridge.command' && packet.id === id);
-    assert.deepEqual(forwarded.command, command, `${command.type} must relay unchanged to the runtime`);
+    assert.deepEqual(forwarded.command, wire(command), `${command.type} must relay unchanged at JSON wire fidelity`);
     send(runtime, { type: 'bridge.ack', id, commandType: command.type, ok: true, message: 'test ack' });
     const ack = await studioInbox.wait((packet) => packet.type === 'bridge.ack' && packet.id === id);
     assert.equal(ack.ok, true, `${command.type} ACK must return to Studio`);
@@ -154,7 +155,7 @@ try {
   send(studio, { type: 'project.save', id: saveId, project });
   const saved = await studioInbox.wait((packet) => packet.type === 'project.saved' && packet.id === saveId);
   assert.equal(saved.ok, true, 'project.save must persist successfully');
-  assert.deepEqual(JSON.parse(readFileSync(projectPath, 'utf8')), project, 'persisted live project must match Studio payload');
+  assert.deepEqual(JSON.parse(readFileSync(projectPath, 'utf8')), wire(project), 'persisted live project must match Studio JSON payload');
 
   const health = await fetch(`http://127.0.0.1:${port}/health`).then((response) => response.json());
   assert.equal(health.ok, true);
