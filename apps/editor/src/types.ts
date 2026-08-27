@@ -12,6 +12,8 @@ export type TransformSnapshot = {
   scale: [number, number, number];
 };
 
+export type EditorAssetCategory = 'nature' | 'structures' | 'props' | 'creatures' | 'other';
+
 export type EditorAsset = {
   id: string;
   kind: 'm2' | 'wmo';
@@ -20,6 +22,7 @@ export type EditorAsset = {
   template: THREE.Object3D;
   triangles: number;
   textures: string[];
+  category?: EditorAssetCategory;
 };
 
 export type InstancedBinding = {
@@ -44,6 +47,7 @@ export type EditorRecord = {
 
 export type TileMeta = {
   n: number;
+  dir?: string;
   originX?: number;
   originY?: number;
   minHeight?: number;
@@ -52,7 +56,22 @@ export type TileMeta = {
     texCount?: number;
     texSize?: number;
     layerScale?: number;
+    compressedMipFormat?: 'dxt1' | 'dxt3' | null;
+    mipLevels?: number;
+    surfaceResolution?: number;
   };
+};
+
+export type TileIndexEntry = {
+  key: string;
+  map: number;
+  dir: string;
+  originX: number;
+  originY: number;
+  minHeight?: number;
+  maxHeight?: number;
+  source?: string;
+  streamRadius?: number;
 };
 
 export type LoadedEditorTile = {
@@ -62,6 +81,7 @@ export type LoadedEditorTile = {
   group: THREE.Group;
   terrain: THREE.Mesh;
   heightGrid: Float32Array;
+  innerHeightGrid?: Float32Array | null;
   assets: EditorAsset[];
   sampleHeightWorld: (x: number, y: number) => number;
 };
