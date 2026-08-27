@@ -51,12 +51,18 @@ export class StudioValidator extends EventTarget {
         if (creature && Number(creature.data.templateEntry ?? 0) <= 0) issues.push(this.issue('warning', 'CREATURE_ENTRY_REQUIRED', 'Creature spawn has no server template entry.', record.id));
         if (gameobject && Number(gameobject.data.templateEntry ?? 0) <= 0) issues.push(this.issue('warning', 'GAMEOBJECT_ENTRY_REQUIRED', 'GameObject spawn has no server template entry.', record.id));
         if (creature && gameobject) issues.push(this.issue('error', 'SERVER_SPAWN_CONFLICT', 'An entity cannot export as both a Creature and a GameObject spawn.', record.id));
+        if (creature) {
+          const movement = String(creature.data.movementMode ?? 'idle');
+          if (!['idle', 'random', 'waypoints'].includes(movement)) issues.push(this.issue('error', 'CREATURE_MOVEMENT_MODE', `Unknown creature movement mode: ${movement}.`, record.id));
+          if (movement === 'random' && Number(creature.data.wanderDistance ?? 5) <= 0) issues.push(this.issue('warning', 'CREATURE_WANDER_RADIUS', 'Random movement should have a wander radius greater than zero.', record.id));
+        }
         if (path) {
           const waypoints = Array.isArray(path.data.waypoints) ? path.data.waypoints : [];
           if (!creature) issues.push(this.issue('warning', 'PATH_WITHOUT_CREATURE', 'Waypoint path is authored on an entity without CreatureSpawn.', record.id));
           if (!waypoints.length) issues.push(this.issue('info', 'PATH_EMPTY', 'Waypoint Path has no authored points.', record.id));
+          if (creature && String(creature.data.movementMode ?? 'idle') === 'waypoints' && !waypoints.length) issues.push(this.issue('warning', 'CREATURE_WAYPOINTS_EMPTY', 'Creature movement is set to waypoints but no path points are authored.', record.id));
           if (waypoints.some((point) => !Array.isArray(point) || point.length < 3 || !finite(point.slice(0, 3).map(Number)))) issues.push(this.issue('error', 'PATH_INVALID_POINT', 'Waypoint path contains an invalid coordinate.', record.id));
-        }
+        } else if (creature && String(creature.data.movementMode ?? 'idle') === 'waypoints') issues.push(this.issue('warning', 'CREATURE_PATH_REQUIRED', 'Creature movement is set to waypoints but the entity has no Path component.', record.id));
         if (trigger && (Number(trigger.data.radius ?? 0) <= 0 || Number(trigger.data.height ?? 0) <= 0)) issues.push(this.issue('error', 'TRIGGER_DIMENSION', 'Area trigger radius/height must be greater than zero.', record.id));
         if (script && script.data.enabled !== false && !String(script.data.module ?? '').trim()) issues.push(this.issue('warning', 'EMPTY_SCRIPT', 'Script component is enabled but has no module.', record.id));
         if (script && String(script.data.parameters ?? '').trim()) {
