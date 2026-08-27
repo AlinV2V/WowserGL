@@ -31,6 +31,7 @@ export class GlobalAssetBrowser extends EventTarget {
   private creatures = new CreatureAssetSource();
 
   constructor(private readonly app: EditorApp, private readonly root: HTMLElement, private readonly components: SceneComponentModel) {
+    super();
     const project = root.querySelector<HTMLElement>('[data-project]')!;
     const toolbar = project.querySelector('.project-toolbar');
     const button = document.createElement('button');
@@ -50,6 +51,22 @@ export class GlobalAssetBrowser extends EventTarget {
     this.search.addEventListener('input', () => this.render());
     this.overlay.querySelector<HTMLSelectElement>('[data-global-category]')!.addEventListener('change', (event) => { this.category = (event.target as HTMLSelectElement).value; this.render(); });
     void this.loadIndex();
+  }
+
+  async instantiatePrefab(prefab: { id: string; model: string; kind: string; entity: Parameters<SceneComponentModel['hydrateEntity']>[1] }) {
+    const component = prefab.entity.components.find((entry) => entry.type === 'CreatureSpawn');
+    const displayId = Number(component?.data.displayId ?? 0);
+    const entry = this.index.assets.find((candidate) => candidate.kind === 'creature' && displayId > 0 && candidate.displayId === displayId)
+      ?? this.index.assets.find((candidate) => candidate.kind === prefab.kind && normalize(candidate.model) === normalize(prefab.model));
+    if (!entry) throw new Error(`Prefab asset is not present in the global index: ${prefab.model}`);
+    const asset = await this.resolve(entry);
+    const target = this.app.camera.orbit.target.clone();
+    const point = this.ground(target.x, target.y) ?? target;
+    const record = this.app.store.addFromAsset(asset, point, this.app.store.tileKey);
+    this.components.hydrateEntity(record, prefab.entity);
+    this.components.addComponent(record, 'PrefabInstance', { prefabId: prefab.id, unpacked: false });
+    this.dispatchEvent(new CustomEvent('spawn', { detail: { entry, record, prefab } }));
+    return record;
   }
 
   private async loadIndex() {
