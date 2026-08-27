@@ -45,6 +45,19 @@ export class EditorObjectStore extends EventTarget {
     super();
   }
 
+  clear() {
+    this.select(null);
+    for (const record of this.records.values()) {
+      if (record.object.userData.editorProxy || record.state === 'added') this.scene.remove(record.object);
+    }
+    this.records.clear();
+    this.changed();
+  }
+
+  recordsForTile(tileKey = this.tileKey) {
+    return [...this.records.values()].filter((record) => record.tileKey === tileKey);
+  }
+
   registerExisting(object: THREE.Object3D, data: Partial<EditorRecord> & { kind: EditorObjectKind; model: string; tileKey: string }) {
     const existingId = String(object.userData.editorRecordId ?? '');
     if (existingId && this.records.has(existingId)) return this.records.get(existingId)!;
@@ -87,7 +100,7 @@ export class EditorObjectStore extends EventTarget {
     object.userData.editorSelectable = true;
     this.records.set(record.id, record);
     this.select(record);
-    this.changed();
+    this.changed(record);
     return record;
   }
 
@@ -109,7 +122,7 @@ export class EditorObjectStore extends EventTarget {
     object.userData.editorSelectable = true;
     this.records.set(copy.id, copy);
     this.select(copy);
-    this.changed();
+    this.changed(copy);
     return copy;
   }
 
@@ -122,20 +135,20 @@ export class EditorObjectStore extends EventTarget {
     }
     if (record.instanced) this.writeInstancedMatrix(record, true);
     if (this.selected === record) this.select(null);
-    this.changed();
+    this.changed(record);
   }
 
   restore(record: EditorRecord, previousState: EditorRecord['state'] = 'existing') {
     record.object.visible = true;
     record.state = previousState;
     if (record.instanced) this.writeInstancedMatrix(record, false);
-    this.changed();
+    this.changed(record);
   }
 
   markModified(record: EditorRecord) {
     if (record.state === 'existing') record.state = 'modified';
     this.syncInstanced(record);
-    this.changed();
+    this.changed(record);
   }
 
   select(record: EditorRecord | null) {
@@ -231,7 +244,7 @@ export class EditorObjectStore extends EventTarget {
     mesh.instanceMatrix.needsUpdate = true;
   }
 
-  private changed() {
-    this.dispatchEvent(new Event('change'));
+  private changed(record?: EditorRecord) {
+    this.dispatchEvent(new CustomEvent<EditorRecord | undefined>('change', { detail: record }));
   }
 }
