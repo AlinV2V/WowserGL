@@ -28,13 +28,14 @@ WowserGL follows the bake/runtime conventions used by `AlinV2V/VanillaGL`:
 - core terrain files: `meta.json` and `heights.f32`
 - optional visual fallback: `ground.png`
 - M2 manifests: `doodads.json` and `wmo_doodads.json`
+- production WMO sidecars: `wmos.meta.json` + `wmos.bin` (`wow-browser-wmo-bin-v1`)
 - WMO JSON development fallback: `wmos.json`
 - object transform fields: x/y/z, qx/qy/qz/qw and scalar `s`
 - tile world placement: `(originX - TILE_HALF, originY - TILE_HALF, 0)`
 
-The shipped VanillaGL client prefers its compact WMO binary path. WowserGL deliberately does **not** fork that decoder. For editor development tiles it consumes the existing `wmos.json` fallback; a production integration can inject/reuse VanillaGL's binary WMO loader without changing the editor UI or editing model.
+Studio includes the small `wow-browser-wmo-bin-v1` hydration adapter used by VanillaGL's production WMO bakes, with automatic `wmos.json` fallback for development tiles. This keeps the editor's scene/editing layer independent while consuming the same baked WMO geometry format as VanillaGL.
 
-Likewise, VanillaGL's production terrain shader is intentionally not copied into this repository. The editor loads `ground.png` when present and uses a neutral Lambert terrain fallback otherwise. This keeps the editor isolated while leaving a clean seam for the existing `terrain-shader.ts` adapter.
+VanillaGL's production terrain shader is intentionally not duplicated into this standalone repository. The editor loads `ground.png` when present and uses a neutral Lambert terrain fallback otherwise. The asset source is isolated behind `VanillaGLAssetSource`, leaving a clean integration seam for reusing VanillaGL's live `WorldTileLoader` / `terrain-shader.ts` pipeline when Studio is embedded into the client.
 
 ## Run
 
@@ -86,6 +87,6 @@ Uniform scale is emitted as a number. Non-uniform scale is emitted as `[x, y, z]
 
 ## Integration boundary
 
-The editor is intentionally standalone. Nothing under VanillaGL's `world.ts`, `simulation/`, `combat/`, or authentication stack is required or modified. For a future in-client `?mode=editor` integration, expose VanillaGL scene objects to `EditorObjectStore`; existing `wmoPick`, `wowDoodad`, and `editorEntity` metadata are recognized by the picker.
+The editor is intentionally standalone. Nothing under VanillaGL's `world.ts`, `simulation/`, `combat/`, or authentication stack is required or modified. For an in-client `?mode=editor` integration, expose VanillaGL scene objects to `EditorObjectStore`; existing `wmoPick`, `wowDoodad`, and `editorEntity` metadata are recognized by the picker.
 
 No Blizzard game assets are included in this repository. The editor only consumes assets supplied by a developer's local VanillaGL extraction/bake pipeline.
