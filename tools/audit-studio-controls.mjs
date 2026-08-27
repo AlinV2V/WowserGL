@@ -45,9 +45,9 @@ for (const [label, fragment, source] of [
   ['Scene tab', "this.sceneTab.addEventListener('click'", game],
   ['Gizmos', "[data-gizmos]", shell],
   ['Bridge status button', "[data-bridge-badge]", shell],
-  ['Shading mode', "data.shellControl = 'shading'", shell],
-  ['2D view', "data.shellControl = '2d'", shell],
-  ['Audio assets', "data.shellControl = 'audio-assets'", shell],
+  ['Shading mode', "shading.dataset.shellControl = 'shading'", shell],
+  ['2D view', "twoD.dataset.shellControl = '2d'", shell],
+  ['Audio assets', "audio.dataset.shellControl = 'audio-assets'", shell],
 ]) has(source, fragment, label);
 
 // Pause and Step must affect actual preview state, not only a dead clock.
