@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main, feature/vanillagl-studio]
+    branches: [main, feature/vanillagl-studio, feature/unity-live-authoring]
   pull_request:
     branches: [main]
 
@@ -18,5 +18,7 @@ jobs:
         with:
           node-version: 22
       - run: npm install
+      - run: node --check apps/bridge/server.mjs
+      - run: node --check tools/dev-studio.mjs
       - run: npm run typecheck
       - run: npm run build
