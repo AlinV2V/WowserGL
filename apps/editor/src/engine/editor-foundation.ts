@@ -1,5 +1,6 @@
 import './engine-editor.css';
 import type { EditorApp } from '../editor-app';
+import type { EditorRecord } from '../types';
 import { ComponentInspectorPanel } from './component-inspector';
 import { SceneComponentModel } from './component-model';
 import { DebugViewController } from './debug-views';
@@ -53,6 +54,22 @@ export function installEngineEditorFoundation(app: EditorApp, root: HTMLElement)
   const serverAuthoring = new ServerAuthoringExporter(app, components, root);
   const toolsPanel = new EngineToolsPanel(app, root, components, workspace, profiler, validator, debug, plugins);
   app.hierarchy.setComponentModel(components, app.history);
+
+  app.store.addEventListener('change', (event) => {
+    const record = (event as CustomEvent<EditorRecord | undefined>).detail;
+    const sourceId = String(record?.object.userData.editorDuplicatedFrom ?? '');
+    if (!record || !sourceId) return;
+    delete record.object.userData.editorDuplicatedFrom;
+    const source = components.entities.get(sourceId);
+    if (!source) return;
+    const snapshot = components.serializeEntity(source);
+    components.hydrateEntity(record, snapshot);
+    if (snapshot.parentId) {
+      const parent = app.store.records.get(snapshot.parentId);
+      if (parent) parent.object.attach(record.object);
+    }
+    app.bottomPanel.log({ level: 'info', message: `Duplicated ${snapshot.name} with its components${workspace.prefabForRecord(record) ? ' and prefab link' : ''}.`, time: new Date() });
+  });
 
   window.addEventListener('keydown', (event) => {
     if (editingText(event.target)) return;
