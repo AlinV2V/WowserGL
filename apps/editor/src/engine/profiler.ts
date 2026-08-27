@@ -61,6 +61,47 @@ export class StudioProfiler extends EventTarget {
     return rows.sort((a, b) => b.triangles - a.triangles);
   }
 
+  summary() {
+    const values = this.history.map((entry) => entry.frameMs).filter(Number.isFinite).sort((a, b) => a - b);
+    const percentile = (p: number) => values.length ? values[Math.min(values.length - 1, Math.floor((values.length - 1) * p))] : 0;
+    const average = values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : 0;
+    return {
+      samples: values.length,
+      averageFrameMs: average,
+      p50FrameMs: percentile(0.5),
+      p95FrameMs: percentile(0.95),
+      worstFrameMs: values.at(-1) ?? 0,
+      bestFrameMs: values[0] ?? 0,
+    };
+  }
+
+  reset() {
+    this.history = [];
+    this.frames = 0;
+    this.frameTotal = 0;
+    this.last = performance.now();
+    this.previousFrame = this.last;
+    this.renderer.info.reset();
+    this.dispatchEvent(new Event('sample'));
+  }
+
+  exportCapture() {
+    const payload = {
+      generatedAt: new Date().toISOString(),
+      renderer: 'WowserGL Studio / Three.js',
+      sample: this.sample,
+      summary: this.summary(),
+      history: this.history,
+      drawables: this.captureFrame(),
+    };
+    const url = URL.createObjectURL(new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' }));
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = `wowsergl_profile_${new Date().toISOString().replace(/[:.]/g, '-')}.json`;
+    anchor.click();
+    URL.revokeObjectURL(url);
+  }
+
   dispose() { cancelAnimationFrame(this.raf); }
 
   private loop = () => {
@@ -99,7 +140,7 @@ export class StudioProfiler extends EventTarget {
         materials: materials.size,
       };
       this.history.push({ ...this.sample });
-      if (this.history.length > 120) this.history.shift();
+      if (this.history.length > 240) this.history.shift();
       this.frames = 0;
       this.frameTotal = 0;
       this.last = now;
