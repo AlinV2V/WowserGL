@@ -49,6 +49,10 @@ export function installEngineEditorFoundation(app: EditorApp, root: HTMLElement)
   const debug = new DebugViewController(app.scene, app.store);
   const hosts = new EngineHostRegistry(app);
   const simulation = new StudioSimulationClock(app, root);
+  simulation.addEventListener('tick', (event) => {
+    const { dt } = (event as CustomEvent<{ dt: number }>).detail;
+    app.environment.update(dt, app.camera.active.position);
+  });
   const plugins = new StudioPluginHost({ app, components, workspace, profiler, validator, debug });
   const componentInspector = new ComponentInspectorPanel(root, app.store, components, workspace);
   const gameView = new RuntimeGameView(app, root);
@@ -130,7 +134,7 @@ export function installEngineEditorFoundation(app: EditorApp, root: HTMLElement)
 
   app.bottomPanel.log({
     level: 'info',
-    message: 'Engine editor foundation ready: components, project workspace, nested hierarchy, audited shell controls, validation, profiler, frame debugger, dependency graph, reusable prefabs, server authoring, WoW tools and authoritative CleanClient Game view.',
+    message: 'Engine editor foundation ready: components, project workspace, nested hierarchy, audited shell controls, functional preview pause/step, validation, profiler, frame debugger, dependency graph, reusable prefabs, server authoring, WoW tools and authoritative CleanClient Game view.',
     time: new Date(),
   });
 
