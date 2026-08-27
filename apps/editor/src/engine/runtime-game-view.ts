@@ -8,6 +8,7 @@ export class RuntimeGameView extends EventTarget {
   private gameTab: HTMLButtonElement;
 
   constructor(private readonly app: EditorApp, private readonly root: HTMLElement) {
+    super();
     const viewport = root.querySelector<HTMLElement>('[data-viewport]')!;
     this.iframe = document.createElement('iframe');
     this.iframe.className = 'runtime-game-iframe';
