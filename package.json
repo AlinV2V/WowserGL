@@ -15,9 +15,11 @@
     "index:assets": "node tools/index-cleanclient-assets.mjs --force",
     "test:asset-index": "node tools/test-index-cleanclient-assets.mjs",
     "test:engine-contracts": "node tools/verify-engine-contracts.mjs",
+    "test:controls": "node tools/audit-studio-controls.mjs",
+    "test:bridge": "node tools/test-bridge.mjs",
     "build": "npm --workspace @wowsergl/editor run build",
-    "typecheck": "node --check apps/bridge/server.mjs && node --check tools/dev-studio.mjs && node --check tools/index-cleanclient-assets.mjs && node --check tools/test-index-cleanclient-assets.mjs && node --check tools/verify-engine-contracts.mjs && npm --workspace @wowsergl/editor run typecheck",
-    "verify:engine": "npm run test:engine-contracts && npm run test:asset-index && npm run typecheck && npm run build",
+    "typecheck": "node --check apps/bridge/server.mjs && node --check tools/dev-studio.mjs && node --check tools/index-cleanclient-assets.mjs && node --check tools/test-index-cleanclient-assets.mjs && node --check tools/verify-engine-contracts.mjs && node --check tools/audit-studio-controls.mjs && node --check tools/test-bridge.mjs && npm --workspace @wowsergl/editor run typecheck",
+    "verify:engine": "npm run test:engine-contracts && npm run test:controls && npm run test:asset-index && npm run test:bridge && npm run typecheck && npm run build",
     "preview": "npm --workspace @wowsergl/editor run preview"
   },
   "engines": {
