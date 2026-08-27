@@ -82,6 +82,31 @@ export type SerializedObject = {
   scale: number | [number, number, number];
 };
 
+export type MaterialLocator = {
+  slot: number;
+  materialIndex?: number;
+  groupIndex?: number;
+  batchIndex?: number;
+  meshIndex?: number;
+  partIndex?: number;
+  textureIndex?: number;
+};
+
+export type MaterialOverride = {
+  id: string;
+  recordId: string;
+  tileKey: string;
+  kind: EditorObjectKind;
+  model: string;
+  sourceId?: string | number;
+  locator: MaterialLocator;
+  scope: 'instance' | 'asset';
+  color?: string;
+  textureUrl?: string;
+  opacity?: number;
+  emissive?: string;
+};
+
 export type CustomMapPatch = {
   version: 1;
   mapId: number;
@@ -90,5 +115,10 @@ export type CustomMapPatch = {
   customWmos: SerializedObject[];
   deletedObjects: Array<{ id: string; kind: EditorObjectKind; model: string }>;
   modifiedObjects: SerializedObject[];
+  materialOverrides?: MaterialOverride[];
   environment?: EnvironmentState;
+  studio?: {
+    savedAt: string;
+    format: 'vanillagl-studio-live-v1';
+  };
 };

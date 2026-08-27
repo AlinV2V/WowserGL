@@ -3,7 +3,9 @@ import type { EditorHistory } from './editor-history';
 import { applySnapshot, snapshotTransform, type EditorObjectStore } from './editor-store';
 import type { EditorRecord } from './types';
 
-export class EditorInspector {
+const escapeHtml = (value: string) => value.replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]!));
+
+export class EditorInspector extends EventTarget {
   private record: EditorRecord | null = null;
   private fields = new Map<string, HTMLInputElement>();
   private metadata!: HTMLElement;
@@ -14,6 +16,7 @@ export class EditorInspector {
     private readonly history: EditorHistory,
     private readonly sampleHeight: (x: number, y: number) => number,
   ) {
+    super();
     this.mount();
     store.addEventListener('selection', (event) => this.setRecord((event as CustomEvent<EditorRecord | null>).detail));
     store.addEventListener('change', () => this.refresh());
@@ -28,26 +31,47 @@ export class EditorInspector {
       rx: THREE.MathUtils.radToDeg(euler.x), ry: THREE.MathUtils.radToDeg(euler.y), rz: THREE.MathUtils.radToDeg(euler.z),
       sx: o.scale.x, sy: o.scale.y, sz: o.scale.z,
     };
-    for (const [key, value] of Object.entries(values)) this.fields.get(key)!.value = value.toFixed(key.startsWith('r') ? 2 : 4);
+    for (const [key, value] of Object.entries(values)) {
+      const field = this.fields.get(key);
+      if (field && document.activeElement !== field) field.value = value.toFixed(key.startsWith('r') ? 2 : 4);
+    }
+    const source = String(this.record.sourceId ?? 'local');
     this.metadata.innerHTML = `
       <div><span>Type</span><strong>${this.record.kind.toUpperCase()}</strong></div>
-      <div><span>Model</span><strong title="${this.record.model}">${this.record.model}</strong></div>
+      <div><span>Model</span><strong title="${escapeHtml(this.record.model)}">${escapeHtml(this.record.model)}</strong></div>
+      <div><span>Source ID</span><strong>${escapeHtml(source)}</strong></div>
       <div><span>Triangles</span><strong>${this.record.triangles.toLocaleString()}</strong></div>
       <div><span>Textures</span><strong>${this.record.textures.length}</strong></div>
-      <div><span>State</span><strong>${this.record.state}</strong></div>`;
+      <div><span>Override State</span><strong class="inspector-state ${this.record.state}">${this.record.state}</strong></div>`;
   }
 
   private mount() {
-    const field = (key: string, label: string, step: string) => `<label class="axis-field"><span>${label}</span><input data-field="${key}" type="number" step="${step}" /></label>`;
+    const field = (key: string, label: string, axis: string, step: string) => `<label class="unity-axis ${axis}"><span>${label}</span><input data-field="${key}" type="number" step="${step}" /></label>`;
     this.container.innerHTML = `
-      <div class="panel-title">Inspector</div>
-      <div class="inspector-empty" data-empty>Select an object in the viewport.</div>
-      <div data-content hidden>
-        <div class="section-label">Position</div><div class="field-grid three">${field('px','X','0.1')}${field('py','Y','0.1')}${field('pz','Z','0.1')}</div>
-        <div class="section-label">Rotation</div><div class="field-grid three">${field('rx','X°','1')}${field('ry','Y°','1')}${field('rz','Z°','1')}</div>
-        <div class="section-label">Scale</div><div class="field-grid three">${field('sx','X','0.01')}${field('sy','Y','0.01')}${field('sz','Z','0.01')}</div>
-        <div class="quick-actions"><button data-ground>Align to Ground</button><button data-reset>Reset Rotation</button><button data-grid>Snap Grid</button></div>
-        <div class="section-label">Asset Metadata</div><div class="metadata" data-metadata></div>
+      <div class="inspector-header"><div><strong>Inspector</strong><small data-object-name>No Selection</small></div><button data-lock title="Lock Inspector">◇</button></div>
+      <div class="inspector-empty" data-empty>Select an object in Scene or Hierarchy.</div>
+      <div class="inspector-content" data-content hidden>
+        <section class="component-card transform-component">
+          <div class="component-head"><span class="component-toggle">▾</span><strong>Transform</strong><button class="component-menu">⋮</button></div>
+          <div class="component-body">
+            <div class="transform-row"><span>Position</span><div class="axis-row">${field('px','X','x','0.1')}${field('py','Y','y','0.1')}${field('pz','Z','z','0.1')}</div></div>
+            <div class="transform-row"><span>Rotation</span><div class="axis-row">${field('rx','X','x','1')}${field('ry','Y','y','1')}${field('rz','Z','z','1')}</div></div>
+            <div class="transform-row"><span>Scale</span><div class="axis-row">${field('sx','X','x','0.01')}${field('sy','Y','y','0.01')}${field('sz','Z','z','0.01')}</div></div>
+            <div class="quick-actions unity-actions"><button data-ground>Align Ground</button><button data-reset>Reset Rotation</button><button data-grid>Snap Grid</button></div>
+          </div>
+        </section>
+        <section class="component-card">
+          <div class="component-head"><span class="component-toggle">▾</span><strong>VanillaGL Object</strong><button class="component-menu">⋮</button></div>
+          <div class="component-body metadata" data-metadata></div>
+        </section>
+        <section class="component-card live-component">
+          <div class="component-head"><span class="component-toggle">▾</span><strong>Live Authoring</strong><span class="component-badge">Runtime</span></div>
+          <div class="component-body">
+            <p class="component-help">Preview remains local. Push updates the running VanillaGL scene. Save persists the override project.</p>
+            <div class="live-author-actions"><button class="accent" data-push-selection>Push Selection</button><button data-save-selection>Save Override</button><button data-focus-game>Focus In Game</button></div>
+          </div>
+        </section>
+        <div data-material-host></div>
       </div>`;
     for (const input of this.container.querySelectorAll<HTMLInputElement>('[data-field]')) {
       this.fields.set(input.dataset.field!, input);
@@ -61,12 +85,27 @@ export class EditorInspector {
       o.position.y = Math.round(o.position.y);
       o.position.z = Math.round(o.position.z);
     }));
+    this.container.querySelector('[data-push-selection]')!.addEventListener('click', () => {
+      if (this.record) this.dispatchEvent(new CustomEvent('push', { detail: this.record }));
+    });
+    this.container.querySelector('[data-save-selection]')!.addEventListener('click', () => {
+      if (this.record) this.dispatchEvent(new CustomEvent('save', { detail: this.record }));
+    });
+    this.container.querySelector('[data-focus-game]')!.addEventListener('click', () => {
+      if (this.record) this.dispatchEvent(new CustomEvent('focus-game', { detail: this.record }));
+    });
+  }
+
+  materialHost() {
+    return this.container.querySelector<HTMLElement>('[data-material-host]')!;
   }
 
   private setRecord(record: EditorRecord | null) {
     this.record = record;
     this.container.querySelector<HTMLElement>('[data-empty]')!.hidden = !!record;
     this.container.querySelector<HTMLElement>('[data-content]')!.hidden = !record;
+    const label = this.container.querySelector<HTMLElement>('[data-object-name]')!;
+    label.textContent = record ? (record.model.split(/[\\/]/).pop() || record.model) : 'No Selection';
     this.refresh();
   }
 

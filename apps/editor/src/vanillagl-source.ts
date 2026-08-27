@@ -141,19 +141,23 @@ export class VanillaGLAssetSource {
   private async addDoodads(base: string, tileKey: string, manifest: DoodadManifest, root: THREE.Group, assets: EditorAsset[], source: string) {
     const meshes = manifest.meshes ?? [];
     const instances = manifest.instances ?? [];
-    const textures = await this.loadTextures(base, manifest.textures ?? []);
+    const textureNames = manifest.textures ?? [];
+    const textures = await this.loadTextures(base, textureNames);
     const templates = meshes.map((mesh, meshIndex) => {
       const template = new THREE.Group();
       template.name = String(mesh.source ?? `m2-${meshIndex}`);
       const positions = new THREE.Float32BufferAttribute(mesh.positions ?? [], 3);
       const uvs = mesh.uvs?.length ? new THREE.Float32BufferAttribute(mesh.uvs, 2) : null;
-      for (const part of mesh.parts ?? []) {
+      const parts = mesh.parts ?? [];
+      for (let partIndex = 0; partIndex < parts.length; partIndex++) {
+        const part = parts[partIndex];
         const geometry = new THREE.BufferGeometry();
         geometry.setAttribute('position', positions);
         if (uvs) geometry.setAttribute('uv', uvs);
         geometry.setIndex(indexAttribute(part.indices ?? []));
         geometry.computeVertexNormals();
-        const map = Number.isInteger(part.tex) ? textures[part.tex] ?? null : null;
+        const textureIndex = Number.isInteger(part.tex) ? Number(part.tex) : -1;
+        const map = textureIndex >= 0 ? textures[textureIndex] ?? null : null;
         const blendMode = Number(part.blendMode ?? 1);
         const material = new THREE.MeshLambertMaterial({
           map,
@@ -163,7 +167,10 @@ export class VanillaGLAssetSource {
           depthWrite: blendMode < 2,
           alphaTest: blendMode === 1 ? 25 / 255 : 0,
         });
-        template.add(new THREE.Mesh(geometry, material));
+        material.name = textureNames[textureIndex]?.split(/[\\/]/).pop() ?? `M2 Material ${partIndex}`;
+        const partMesh = new THREE.Mesh(geometry, material);
+        partMesh.userData.editorMaterial = { meshIndex, partIndex, textureIndex };
+        template.add(partMesh);
       }
       const model = String(mesh.source ?? `m2-${meshIndex}`);
       assets.push({
@@ -173,7 +180,7 @@ export class VanillaGLAssetSource {
         label: model.split(/[\\/]/).pop() ?? model,
         template,
         triangles: countTriangles(template),
-        textures: (manifest.textures ?? []).filter(Boolean),
+        textures: textureNames.filter(Boolean),
       });
       return template;
     });
@@ -194,18 +201,22 @@ export class VanillaGLAssetSource {
   }
 
   private async addWmos(base: string, tileKey: string, manifest: WmoManifest, root: THREE.Group, assets: EditorAsset[]) {
-    const textures = await this.loadTextures(base, manifest.textures ?? []);
+    const textureNames = manifest.textures ?? [];
+    const textures = await this.loadTextures(base, textureNames);
     const models = manifest.models ?? [];
     const templates = models.map((model, modelIndex) => {
       const template = new THREE.Group();
       template.name = String(model.name ?? `wmo-${modelIndex}`);
-      for (const group of model.groups ?? []) {
+      const groups = model.groups ?? [];
+      for (let groupIndex = 0; groupIndex < groups.length; groupIndex++) {
+        const group = groups[groupIndex];
         const positions = new THREE.Float32BufferAttribute(group.positions ?? [], 3);
         const normals = group.normals?.length ? new THREE.Float32BufferAttribute(group.normals, 3) : null;
         const uvs = group.uvs?.length ? new THREE.Float32BufferAttribute(group.uvs, 2) : null;
         const indices = indexAttribute(group.indices ?? []);
         const batches = group.batches?.length ? group.batches : [{ tex: -1, indexStart: 0, indexCount: indices.count, flags: 0, blendMode: 0 }];
-        for (const batch of batches) {
+        for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
+          const batch = batches[batchIndex];
           const geometry = new THREE.BufferGeometry();
           geometry.setAttribute('position', positions);
           if (normals) geometry.setAttribute('normal', normals);
@@ -215,7 +226,8 @@ export class VanillaGLAssetSource {
           const start = Number(batch.indexStart ?? batch.start ?? 0);
           const count = Number(batch.indexCount ?? batch.count ?? indices.count);
           geometry.setDrawRange(start, count);
-          const map = Number.isInteger(batch.tex) ? textures[batch.tex] ?? null : null;
+          const textureIndex = Number.isInteger(batch.tex) ? Number(batch.tex) : -1;
+          const map = textureIndex >= 0 ? textures[textureIndex] ?? null : null;
           const blendMode = Number(batch.blendMode ?? 0);
           const material = new THREE.MeshLambertMaterial({
             map,
@@ -224,7 +236,10 @@ export class VanillaGLAssetSource {
             transparent: blendMode >= 2,
             depthWrite: blendMode < 2,
           });
-          template.add(new THREE.Mesh(geometry, material));
+          material.name = textureNames[textureIndex]?.split(/[\\/]/).pop() ?? `WMO ${groupIndex}:${batchIndex}`;
+          const batchMesh = new THREE.Mesh(geometry, material);
+          batchMesh.userData.editorMaterial = { groupIndex, batchIndex, textureIndex };
+          template.add(batchMesh);
         }
       }
       const modelPath = String(model.name ?? `wmo-${modelIndex}`);
@@ -235,7 +250,7 @@ export class VanillaGLAssetSource {
         label: modelPath.split(/[\\/]/).pop() ?? modelPath,
         template,
         triangles: countTriangles(template),
-        textures: (manifest.textures ?? []).filter(Boolean),
+        textures: textureNames.filter(Boolean),
       });
       return template;
     });

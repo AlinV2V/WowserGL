@@ -1,16 +1,19 @@
 {
   "name": "wowsergl",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.2.0",
   "license": "MIT",
   "type": "module",
   "workspaces": [
     "apps/*"
   ],
   "scripts": {
-    "dev": "npm --workspace @wowsergl/editor run dev",
+    "dev": "node tools/dev-studio.mjs",
+    "dev:studio": "node tools/dev-studio.mjs",
+    "dev:editor": "npm --workspace @wowsergl/editor run dev",
+    "bridge": "npm --workspace @wowsergl/bridge run start",
     "build": "npm --workspace @wowsergl/editor run build",
-    "typecheck": "npm --workspace @wowsergl/editor run typecheck",
+    "typecheck": "node --check apps/bridge/server.mjs && node --check tools/dev-studio.mjs && npm --workspace @wowsergl/editor run typecheck",
     "preview": "npm --workspace @wowsergl/editor run preview"
   },
   "engines": {

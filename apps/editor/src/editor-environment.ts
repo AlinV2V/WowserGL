@@ -38,6 +38,7 @@ export class EditorEnvironment extends EventTarget {
   };
   private curve: LightCurveProvider = defaultCurve;
   private precipitationVelocity = new Float32Array();
+  private controls: HTMLElement | null = null;
 
   constructor(private readonly scene: THREE.Scene) {
     super();
@@ -58,6 +59,7 @@ export class EditorEnvironment extends EventTarget {
   setHour(hour: number) {
     this.state.hour = ((hour % 24) + 24) % 24;
     this.apply();
+    this.syncControls();
   }
 
   setFog(near: number, far: number, color = this.state.fogColor) {
@@ -65,11 +67,13 @@ export class EditorEnvironment extends EventTarget {
     this.state.fogFar = Math.max(this.state.fogNear + 1, far);
     this.state.fogColor = color;
     this.apply();
+    this.syncControls();
   }
 
   setWeather(weather: EnvironmentState['weather']) {
     this.state.weather = weather;
     this.rebuildWeather();
+    this.syncControls();
     this.changed();
   }
 
@@ -82,42 +86,56 @@ export class EditorEnvironment extends EventTarget {
       let z = positions.getZ(i) + this.precipitationVelocity[i] * dt;
       if (z < -20) z = 45 + Math.random() * 15;
       positions.setZ(i, z);
-      if (this.state.weather === 'snow') {
-        positions.setX(i, positions.getX(i) + Math.sin(performance.now() * 0.001 + i) * dt * 0.25);
-      }
+      if (this.state.weather === 'snow') positions.setX(i, positions.getX(i) + Math.sin(performance.now() * 0.001 + i) * dt * 0.25);
     }
     positions.needsUpdate = true;
   }
 
   mountControls(container: HTMLElement) {
+    this.controls = container;
     container.innerHTML = `
-      <div class="panel-title">Environment</div>
-      <label class="field"><span>Time of day</span><output data-hour>12:00</output></label>
-      <input data-time type="range" min="0" max="24" step="0.05" value="12" />
-      <div class="field-grid two">
-        <label class="field"><span>Fog near</span><input data-fog-near type="number" value="220" step="10" /></label>
-        <label class="field"><span>Fog far</span><input data-fog-far type="number" value="1100" step="10" /></label>
-      </div>
-      <label class="field"><span>Fog color</span><input data-fog-color type="color" value="#70859a" /></label>
-      <label class="field"><span>Weather</span><select data-weather><option value="clear">Clear</option><option value="rain">Rain</option><option value="snow">Snow</option></select></label>
-      <div class="hint">A VanillaGL Light.dbc curve can be injected through setLightCurveProvider().</div>`;
+      <section class="component-card environment-component">
+        <div class="component-head"><span class="component-toggle">▾</span><strong>Environment</strong><span class="component-badge">Live</span></div>
+        <div class="component-body">
+          <div class="unity-property"><span>Time of Day</span><div class="property-control time-control"><input data-time type="range" min="0" max="24" step="0.05" value="12" /><output data-hour>12:00</output></div></div>
+          <div class="unity-property"><span>Fog Distance</span><div class="property-control dual-input"><input data-fog-near type="number" value="220" step="10" /><input data-fog-far type="number" value="1100" step="10" /></div></div>
+          <div class="unity-property"><span>Fog Color</span><div class="property-control"><input data-fog-color type="color" value="#70859a" /></div></div>
+          <div class="unity-property"><span>Weather</span><div class="property-control"><select data-weather><option value="clear">Clear</option><option value="rain">Rain</option><option value="snow">Snow</option></select></div></div>
+          <div class="component-help">When Live Sync is enabled these values are sent to VanillaGL immediately. Game time uses VanillaGL's own <code>wowTune</code>/Light.dbc path when the runtime receiver is active.</div>
+        </div>
+      </section>`;
     const time = container.querySelector<HTMLInputElement>('[data-time]')!;
-    const hour = container.querySelector<HTMLOutputElement>('[data-hour]')!;
     const near = container.querySelector<HTMLInputElement>('[data-fog-near]')!;
     const far = container.querySelector<HTMLInputElement>('[data-fog-far]')!;
     const color = container.querySelector<HTMLInputElement>('[data-fog-color]')!;
     const weather = container.querySelector<HTMLSelectElement>('[data-weather]')!;
-    time.addEventListener('input', () => {
-      this.setHour(Number(time.value));
-      const h = Math.floor(this.state.hour);
-      const m = Math.floor((this.state.hour - h) * 60);
-      hour.value = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
-    });
+    time.addEventListener('input', () => this.setHour(Number(time.value)));
     const updateFog = () => this.setFog(Number(near.value), Number(far.value), color.value);
     near.addEventListener('change', updateFog);
     far.addEventListener('change', updateFog);
     color.addEventListener('input', updateFog);
     weather.addEventListener('change', () => this.setWeather(weather.value as EnvironmentState['weather']));
+    this.syncControls();
+  }
+
+  private syncControls() {
+    if (!this.controls) return;
+    const time = this.controls.querySelector<HTMLInputElement>('[data-time]');
+    const hour = this.controls.querySelector<HTMLOutputElement>('[data-hour]');
+    const near = this.controls.querySelector<HTMLInputElement>('[data-fog-near]');
+    const far = this.controls.querySelector<HTMLInputElement>('[data-fog-far]');
+    const color = this.controls.querySelector<HTMLInputElement>('[data-fog-color]');
+    const weather = this.controls.querySelector<HTMLSelectElement>('[data-weather]');
+    if (time && document.activeElement !== time) time.value = String(this.state.hour);
+    if (hour) {
+      const h = Math.floor(this.state.hour);
+      const m = Math.floor((this.state.hour - h) * 60);
+      hour.value = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+    }
+    if (near && document.activeElement !== near) near.value = String(this.state.fogNear);
+    if (far && document.activeElement !== far) far.value = String(this.state.fogFar);
+    if (color && document.activeElement !== color) color.value = this.state.fogColor;
+    if (weather) weather.value = this.state.weather;
   }
 
   private apply() {
@@ -158,6 +176,6 @@ export class EditorEnvironment extends EventTarget {
   }
 
   private changed() {
-    this.dispatchEvent(new Event('change'));
+    this.dispatchEvent(new CustomEvent<EnvironmentState>('change', { detail: { ...this.state } }));
   }
 }

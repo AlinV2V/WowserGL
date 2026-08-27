@@ -1,92 +1,107 @@
 # VanillaGL Studio / WowserGL
 
-A web-native 3D world editor and engine sandbox for **VanillaGL**. The editor is a separate Vite/TypeScript workspace and does not import or rewrite VanillaGL gameplay systems.
+VanillaGL Studio is a web-native world editor and live-authoring sandbox for VanillaGL. It uses a Unity-style workflow: Hierarchy + Scene viewport + Project browser + Inspector + Console/Changes dock, while staying separate from normal gameplay code.
 
-## What is implemented
+## Studio workflow
 
-- Noclip flight camera: WASD, RMB look, Shift boost, mouse-wheel speed.
-- Alt-held orbit/focus workflow plus orthographic top-down mode.
-- Raycast selection for editable M2, WMO and registered entity roots.
-- Three.js r176 `TransformControls`: W translate, E rotate, R scale.
-- Translation and rotation snapping.
-- Delete/Backspace, Ctrl+D, Ctrl+Z/Ctrl+Y and F-to-focus.
-- Per-object bounding-box selection highlight.
-- Searchable M2/WMO palette sourced from the loaded VanillaGL tile manifests.
-- Click or drag/drop spawning onto terrain.
-- Inspector for position, Euler rotation, scale, model path, triangle count and texture count.
-- Align-to-ground, reset rotation and grid snap actions.
-- Time-of-day, fog and rain/snow sandbox.
-- Versioned `custom_map_patch.json` export/import.
-- Individual editing proxy for VanillaGL `InstancedMesh` doodads carrying `userData.wowDoodad`.
+Studio has three levels of editing:
 
-## VanillaGL compatibility
+1. **Preview** — edit locally in the Studio scene.
+2. **Push to Game** — apply the selected transform/material/environment change to a running VanillaGL client through the local live bridge.
+3. **Save Project** — persist the non-destructive override project to `project/live-project.json` and browser local storage.
 
-WowserGL follows the bake/runtime conventions used by `AlinV2V/VanillaGL`:
+The original WoW M2/WMO/ADT assets are never rewritten. VanillaGL applies Studio overrides on top of its normal baked world.
 
-- tile size: `533.33333`
-- tile directory: `/terrain/tiles/<tileKey>`
-- core terrain files: `meta.json` and `heights.f32`
-- optional visual fallback: `ground.png`
-- M2 manifests: `doodads.json` and `wmo_doodads.json`
-- production WMO sidecars: `wmos.meta.json` + `wmos.bin` (`wow-browser-wmo-bin-v1`)
-- WMO JSON development fallback: `wmos.json`
-- object transform fields: x/y/z, qx/qy/qz/qw and scalar `s`
-- tile world placement: `(originX - TILE_HALF, originY - TILE_HALF, 0)`
+## Unity-style tools
 
-Studio includes the small `wow-browser-wmo-bin-v1` hydration adapter used by VanillaGL's production WMO bakes, with automatic `wmos.json` fallback for development tiles. This keeps the editor's scene/editing layer independent while consuming the same baked WMO geometry format as VanillaGL.
+- Hierarchy with scene search, selection, modified-state markers and context actions.
+- Scene viewport with WASD/RMB fly camera, Alt orbit, top view and transform gizmos.
+- Project browser for M2/WMO assets with search, type filters and drag-to-spawn.
+- Inspector component cards for Transform, VanillaGL metadata, live authoring and renderer/material overrides.
+- W/E/R Move/Rotate/Scale controls with translation and angle snapping.
+- Play/Stop-style runtime controls, Live Sync, Push All and Open Game.
+- Bottom Console / Changes / Live Game dock.
+- Material tint and texture override editing with per-instance or asset-wide scope.
+- Time of day, fog and weather editing.
+- Delete, duplicate, undo/redo and focus-selection hotkeys.
+- Existing `custom_map_patch.json` import/export format remains supported by the serializer.
 
-VanillaGL's production terrain shader is intentionally not duplicated into this standalone repository. The editor loads `ground.png` when present and uses a neutral Lambert terrain fallback otherwise. The asset source is isolated behind `VanillaGLAssetSource`, leaving a clean integration seam for reusing VanillaGL's live `WorldTileLoader` / `terrain-shader.ts` pipeline when Studio is embedded into the client.
+## VanillaGL asset compatibility
 
-## Run
+Studio consumes the current VanillaGL baked world conventions:
+
+- tile size `533.33333`
+- `/terrain/tiles/<tileKey>`
+- `meta.json` + `heights.f32`
+- `doodads.json` / `wmo_doodads.json`
+- `wmos.meta.json` + `wmos.bin` (`wow-browser-wmo-bin-v1`)
+- `wmos.json` development fallback
+- x/y/z + quaternion + scale instance transforms
+- tile placement at `(originX - TILE_HALF, originY - TILE_HALF, 0)`
+
+Studio still uses `ground.png`/Lambert fallback for its own editing viewport when the full VanillaGL terrain shader is not exposed. The running game remains the authoritative high-fidelity renderer when using Live Sync.
+
+## Run Studio + bridge
 
 ```bash
 npm install
 npm run dev
 ```
 
-Studio runs on `http://localhost:5180`.
+This starts:
 
-By default the Vite dev server proxies `/terrain`, `/textures`, and `/models` to a VanillaGL client/assets origin at `http://localhost:5173`.
+- Studio: `http://localhost:5180`
+- Live bridge: `ws://127.0.0.1:5191`
 
-To point it somewhere else:
+By default Studio proxies VanillaGL assets from `http://localhost:5173`.
+
+To use another VanillaGL origin:
 
 ```bash
 VANILLAGL_ASSET_ORIGIN=http://localhost:5174 npm run dev
 ```
 
-You can open a tile directly:
+The **Open Game** button launches VanillaGL with an explicit `studioBridge` query parameter. Only that opt-in game session installs the live-authoring runtime receiver; ordinary VanillaGL sessions stay unchanged.
+
+You can also open a tile directly:
 
 ```text
 http://localhost:5180/?tile=Azeroth_30_49&map=0
 ```
 
-## Export format
+## Live material example
 
-Exports are world-space so patches remain independent of editor camera/render-origin rebasing:
+Select a WMO building or M2 object, open **Renderer / Materials**, choose a material, then change its tint or enter a browser-decodable custom texture override such as:
 
-```json
-{
-  "version": 1,
-  "mapId": 0,
-  "tileKey": "Azeroth_30_49",
-  "customDoodads": [
-    {
-      "model": "World/Generic/Human/Passive Doodads/Benches/Bench01.m2",
-      "position": [-9450.2, 83.1, 45.0],
-      "rotation": [0, 0.707, 0, 0.707],
-      "scale": 1
-    }
-  ],
-  "customWmos": [],
-  "deletedObjects": [],
-  "modifiedObjects": []
-}
+```text
+/textures/custom/red_flag.png
 ```
 
-Uniform scale is emitted as a number. Non-uniform scale is emitted as `[x, y, z]`.
+Use **Apply Preview** to change Studio only, **Push to Game** to update the live VanillaGL scene, or enable **Live Sync** so edits are pushed automatically. **Save Project** makes the overrides persistent without touching the source WMO/M2. Registered VanillaGL texture assets can still use the project's normal optimized/KTX2 routing; arbitrary new custom files should use PNG/WebP unless they are added to that asset routing manifest.
 
-## Integration boundary
+## Architecture
 
-The editor is intentionally standalone. Nothing under VanillaGL's `world.ts`, `simulation/`, `combat/`, or authentication stack is required or modified. For an in-client `?mode=editor` integration, expose VanillaGL scene objects to `EditorObjectStore`; existing `wmoPick`, `wowDoodad`, and `editorEntity` metadata are recognized by the picker.
+```text
+VanillaGL baked assets
+        │
+        ├──────────────► VanillaGL Studio viewport
+        │                       │
+        │                  authoring state
+        │                       │
+        │         ws://127.0.0.1:5191
+        │                       │
+        └──────────────► VanillaGL runtime
+                                │
+                         live override layer
+```
 
-No Blizzard game assets are included in this repository. The editor only consumes assets supplied by a developer's local VanillaGL extraction/bake pipeline.
+The bridge is intentionally local and binds to `127.0.0.1` by default. It stores the current project in `project/live-project.json` and relays structured commands; it does not proxy realm authentication or gameplay network traffic.
+
+## Build verification
+
+```bash
+npm run typecheck
+npm run build
+```
+
+No Blizzard game assets are bundled in this repository. Studio only consumes assets supplied by the developer's local extraction/bake pipeline.
