@@ -1,3 +1,4 @@
+import type * as THREE from 'three';
 import type { EditorHistory } from './editor-history';
 import type { EditorObjectStore } from './editor-store';
 import type { EditorRecord } from './types';
@@ -158,10 +159,10 @@ export class EditorHierarchy extends EventTarget {
     this.history.execute({ label: parent ? `Parent ${record.model} → ${parent.model}` : `Unparent ${record.model}`, redo: () => apply(parent?.id), undo: () => apply(beforeParentId) });
   }
 
-  private sceneRoot(object: THREE.Object3D | any) {
-    let root = object as { parent: any; attach?: (child: any) => void };
+  private sceneRoot(object: THREE.Object3D): THREE.Object3D | null {
+    let root: THREE.Object3D = object;
     while (root.parent) root = root.parent;
-    return typeof root.attach === 'function' ? root : null;
+    return root;
   }
 
   private wouldCycle(childId: string, parentId: string) {
