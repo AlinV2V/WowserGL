@@ -14,6 +14,7 @@ import { StudioProfiler } from './profiler';
 import { ProjectWorkspace } from './project-workspace';
 import { RuntimeGameView } from './runtime-game-view';
 import { ServerAuthoringExporter } from './server-authoring';
+import { StudioShellControls } from './shell-controls';
 import { StudioSimulationClock } from './simulation-clock';
 import { StudioValidator } from './validation';
 import { WowWorldTools } from './wow-tools';
@@ -34,6 +35,7 @@ export type EngineEditorFoundation = {
   wowTools: WowWorldTools;
   serverAuthoring: ServerAuthoringExporter;
   toolsPanel: EngineToolsPanel;
+  shellControls: StudioShellControls;
 };
 
 const editingText = (target: EventTarget | null) => target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement || (target instanceof HTMLElement && target.isContentEditable);
@@ -54,6 +56,7 @@ export function installEngineEditorFoundation(app: EditorApp, root: HTMLElement)
   const wowTools = new WowWorldTools(app, root, components);
   const serverAuthoring = new ServerAuthoringExporter(app, components, root);
   const toolsPanel = new EngineToolsPanel(app, root, components, workspace, profiler, validator, debug, plugins);
+  const shellControls = new StudioShellControls(app, root, debug);
   app.hierarchy.setComponentModel(components, app.history);
 
   app.store.addEventListener('change', (event) => {
@@ -106,6 +109,7 @@ export function installEngineEditorFoundation(app: EditorApp, root: HTMLElement)
     wowTools,
     serverAuthoring,
     toolsPanel,
+    shellControls,
   };
 
   const global = globalThis as unknown as { VanillaGLStudio?: Record<string, unknown> };
@@ -125,7 +129,7 @@ export function installEngineEditorFoundation(app: EditorApp, root: HTMLElement)
 
   app.bottomPanel.log({
     level: 'info',
-    message: 'Engine editor foundation ready: components, project workspace, nested hierarchy, validation, profiler, frame debugger, dependency graph, reusable prefabs, server authoring, WoW tools and authoritative CleanClient Game view.',
+    message: 'Engine editor foundation ready: components, project workspace, nested hierarchy, audited shell controls, validation, profiler, frame debugger, dependency graph, reusable prefabs, server authoring, WoW tools and authoritative CleanClient Game view.',
     time: new Date(),
   });
 
