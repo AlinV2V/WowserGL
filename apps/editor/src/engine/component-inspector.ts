@@ -12,12 +12,17 @@ export class ComponentInspectorPanel {
   private record: EditorRecord | null = null;
   private collapsed = new Set<string>();
   private clipboard: ComponentClipboard | null = null;
+  private audio: HTMLAudioElement | null = null;
 
   constructor(root: HTMLElement, private readonly store: EditorObjectStore, private readonly model: SceneComponentModel, private readonly workspace: ProjectWorkspace) {
     this.host = document.createElement('div');
     this.host.className = 'studio-component-stack';
     root.querySelector('[data-inspector] [data-content]')?.append(this.host);
-    store.addEventListener('selection', (event) => { this.record = (event as CustomEvent<EditorRecord | null>).detail; this.render(); });
+    store.addEventListener('selection', (event) => {
+      this.stopAudio();
+      this.record = (event as CustomEvent<EditorRecord | null>).detail;
+      this.render();
+    });
     model.addEventListener('change', () => this.render());
     workspace.addEventListener('change', () => this.render());
     this.record = store.selected;
@@ -75,7 +80,7 @@ export class ComponentInspectorPanel {
       remove.className = 'component-remove';
       remove.textContent = '×';
       remove.title = 'Remove component';
-      remove.addEventListener('click', (event) => { event.stopPropagation(); this.model.removeComponent(record, entry.type); });
+      remove.addEventListener('click', (event) => { event.stopPropagation(); if (entry.type === 'AudioSource') this.stopAudio(); this.model.removeComponent(record, entry.type); });
       actions.append(remove);
     }
     header.append(actions);
@@ -87,8 +92,15 @@ export class ComponentInspectorPanel {
     const body = document.createElement('div');
     body.className = 'component-body';
     body.hidden = isCollapsed;
+    if (schema?.note) {
+      const note = document.createElement('div');
+      note.className = 'component-help component-backend-note';
+      note.textContent = schema.note;
+      body.append(note);
+    }
     for (const field of schema?.fields ?? []) body.append(this.field(record, entry, field));
     if (entry.type === 'CreatureSpawn') body.append(this.creatureMovementFields(record, entry));
+    if (entry.type === 'AudioSource') body.append(this.audioPreview(entry));
     if (entry.type === 'Path') {
       const note = document.createElement('div');
       note.className = 'component-help';
@@ -118,6 +130,40 @@ export class ComponentInspectorPanel {
       }
     });
     wander.addEventListener('change', () => this.model.setComponentValue(record, 'CreatureSpawn', 'wanderDistance', Math.max(0, Number(wander.value))));
+    return host;
+  }
+
+  private audioPreview(entry: StudioComponent) {
+    const host = document.createElement('div');
+    host.className = 'component-preview-actions';
+    const status = document.createElement('span');
+    status.className = 'component-help';
+    status.textContent = 'Stopped';
+    const play = document.createElement('button');
+    play.textContent = '▶ Preview';
+    play.className = 'accent';
+    play.addEventListener('click', async () => {
+      this.stopAudio();
+      const url = String(entry.data.url ?? '').trim();
+      if (!url) { status.textContent = 'Set a Sound URL first.'; return; }
+      const audio = new Audio(url);
+      audio.volume = Math.max(0, Math.min(1, Number(entry.data.volume ?? 1)));
+      audio.loop = entry.data.loop === true;
+      this.audio = audio;
+      audio.addEventListener('ended', () => { if (this.audio === audio) { this.audio = null; status.textContent = 'Finished'; } });
+      audio.addEventListener('error', () => { if (this.audio === audio) { this.audio = null; status.textContent = 'Preview failed to load.'; } });
+      try {
+        await audio.play();
+        status.textContent = `Playing · volume ${Math.round(audio.volume * 100)}%${audio.loop ? ' · loop' : ''}`;
+      } catch (error) {
+        this.audio = null;
+        status.textContent = `Preview failed: ${error instanceof Error ? error.message : String(error)}`;
+      }
+    });
+    const stop = document.createElement('button');
+    stop.textContent = '■ Stop';
+    stop.addEventListener('click', () => { this.stopAudio(); status.textContent = 'Stopped'; });
+    host.append(play, stop, status);
     return host;
   }
 
@@ -248,8 +294,16 @@ export class ComponentInspectorPanel {
 
   private warningFor(entry: StudioComponent) {
     if ((entry.type === 'CreatureSpawn' || entry.type === 'GameObjectSpawn') && Number(entry.data.templateEntry ?? 0) <= 0) return 'A server template entry is required before vMaNGOS export.';
-    if (entry.type === 'Script' && entry.data.enabled !== false && !String(entry.data.module ?? '').trim()) return 'Enabled Script component has no module.';
+    if (entry.type === 'AudioSource' && !String(entry.data.url ?? '').trim()) return 'Set a Sound URL to use the audio preview.';
+    if (entry.type === 'Script' && entry.data.enabled !== false && !String(entry.data.module ?? '').trim()) return 'Enabled script metadata has no module name.';
     if (entry.type === 'Path' && !Array.isArray(entry.data.waypoints)) return 'Waypoint payload is invalid.';
     return '';
+  }
+
+  private stopAudio() {
+    if (!this.audio) return;
+    this.audio.pause();
+    this.audio.currentTime = 0;
+    this.audio = null;
   }
 }
