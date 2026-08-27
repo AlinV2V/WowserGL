@@ -13,7 +13,7 @@
     "dev:editor": "npm --workspace @wowsergl/editor run dev",
     "bridge": "npm --workspace @wowsergl/bridge run start",
     "build": "npm --workspace @wowsergl/editor run build",
-    "typecheck": "npm --workspace @wowsergl/editor run typecheck",
+    "typecheck": "node --check apps/bridge/server.mjs && node --check tools/dev-studio.mjs && npm --workspace @wowsergl/editor run typecheck",
     "preview": "npm --workspace @wowsergl/editor run preview"
   },
   "engines": {
