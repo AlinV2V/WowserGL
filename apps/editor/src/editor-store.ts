@@ -120,6 +120,7 @@ export class EditorObjectStore extends EventTarget {
     };
     object.userData.editorRecordId = copy.id;
     object.userData.editorSelectable = true;
+    object.userData.editorDuplicatedFrom = record.id;
     this.records.set(copy.id, copy);
     this.select(copy);
     this.changed(copy);
