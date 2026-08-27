@@ -22,6 +22,8 @@ export type GlobalAssetEntry = {
 type AssetIndex = { version: 1; generatedAt: string | null; source: string | null; assets: GlobalAssetEntry[] };
 const normalize = (value: string) => value.replaceAll('\\', '/').toLowerCase();
 const spawnable = (entry: GlobalAssetEntry): entry is GlobalAssetEntry & { kind: 'm2' | 'wmo' | 'creature' } => entry.kind === 'm2' || entry.kind === 'wmo' || entry.kind === 'creature';
+const FAVORITES_KEY = 'wowsergl:content-favorites:v1';
+const RECENTS_KEY = 'wowsergl:content-recents:v1';
 
 export class GlobalAssetBrowser extends EventTarget {
   private index: AssetIndex = { version: 1, generatedAt: null, source: null, assets: [] };
@@ -30,13 +32,17 @@ export class GlobalAssetBrowser extends EventTarget {
   private list: HTMLElement;
   private preview: HTMLElement;
   private category = 'all';
+  private scope: 'all' | 'favorites' | 'recent' = 'all';
   private assetCache = new Map<string, Promise<EditorAsset>>();
   private tileCache = new Map<string, Promise<LoadedEditorTile>>();
   private creatures = new CreatureAssetSource();
   private audio: HTMLAudioElement | null = null;
+  private favorites = new Set<string>();
+  private recent: string[] = [];
 
   constructor(private readonly app: EditorApp, private readonly root: HTMLElement, private readonly components: SceneComponentModel) {
     super();
+    this.loadLocalState();
     const project = root.querySelector<HTMLElement>('[data-project]')!;
     const toolbar = project.querySelector('.project-toolbar');
     const button = document.createElement('button');
@@ -47,7 +53,7 @@ export class GlobalAssetBrowser extends EventTarget {
     this.overlay = document.createElement('div');
     this.overlay.className = 'global-asset-browser';
     this.overlay.hidden = true;
-    this.overlay.innerHTML = `<div class="global-assets-head"><strong>Content Browser</strong><span data-index-state>Index not loaded</span><button data-close>×</button></div><div class="global-assets-toolbar"><input data-global-search type="search" placeholder="Search models, creatures, textures and audio…"/><select data-global-category><option value="all">All categories</option><option value="nature">Nature</option><option value="structures">Structures</option><option value="props">Props</option><option value="creatures">Creatures</option><option value="textures">Textures</option><option value="audio">Audio</option><option value="other">Other</option></select></div><div class="global-assets-body"><div class="global-assets-list" data-global-list></div><aside class="global-asset-preview" data-global-preview><div class="empty-state">Select an asset to inspect its dependencies and preview.</div></aside></div>`;
+    this.overlay.innerHTML = `<div class="global-assets-head"><strong>Content Browser</strong><span data-index-state>Index not loaded</span><button data-close>×</button></div><div class="global-assets-toolbar"><input data-global-search type="search" placeholder="Search models, creatures, textures and audio…"/><select data-global-scope><option value="all">All assets</option><option value="favorites">Favorites</option><option value="recent">Recent</option></select><select data-global-category><option value="all">All categories</option><option value="nature">Nature</option><option value="structures">Structures</option><option value="props">Props</option><option value="creatures">Creatures</option><option value="textures">Textures</option><option value="audio">Audio</option><option value="other">Other</option></select></div><div class="global-assets-body"><div class="global-assets-list" data-global-list></div><aside class="global-asset-preview" data-global-preview><div class="empty-state">Select an asset to inspect dependencies and preview it.</div></aside></div>`;
     project.append(this.overlay);
     this.search = this.overlay.querySelector<HTMLInputElement>('[data-global-search]')!;
     this.list = this.overlay.querySelector<HTMLElement>('[data-global-list]')!;
@@ -56,6 +62,8 @@ export class GlobalAssetBrowser extends EventTarget {
     this.overlay.querySelector('[data-close]')!.addEventListener('click', () => { this.overlay.hidden = true; this.stopAudio(); });
     this.search.addEventListener('input', () => this.render());
     this.overlay.querySelector<HTMLSelectElement>('[data-global-category]')!.addEventListener('change', (event) => { this.category = (event.target as HTMLSelectElement).value; this.render(); });
+    this.overlay.querySelector<HTMLSelectElement>('[data-global-scope]')!.addEventListener('change', (event) => { this.scope = (event.target as HTMLSelectElement).value as typeof this.scope; this.render(); });
+    this.bindSceneDrop();
     void this.loadIndex();
   }
 
@@ -65,10 +73,7 @@ export class GlobalAssetBrowser extends EventTarget {
     const entry = this.index.assets.find((candidate) => candidate.kind === 'creature' && displayId > 0 && candidate.displayId === displayId)
       ?? this.index.assets.find((candidate) => candidate.kind === prefab.kind && normalize(candidate.model) === normalize(prefab.model));
     if (!entry || !spawnable(entry)) throw new Error(`Prefab asset is not present in the spawnable global index: ${prefab.model}`);
-    const asset = await this.resolve(entry);
-    const target = this.app.camera.orbit.target.clone();
-    const point = this.ground(target.x, target.y) ?? target;
-    const record = this.app.store.addFromAsset(asset, point, this.app.store.tileKey);
+    const record = await this.spawn(entry);
     this.components.hydrateEntity(record, prefab.entity);
     this.components.addComponent(record, 'PrefabInstance', { prefabId: prefab.id, unpacked: false });
     this.dispatchEvent(new CustomEvent('spawn', { detail: { entry, record, prefab } }));
@@ -92,7 +97,11 @@ export class GlobalAssetBrowser extends EventTarget {
 
   private render() {
     const q = this.search.value.trim().toLowerCase();
-    const rows = this.index.assets.filter((entry) => (this.category === 'all' || entry.category === this.category) && (!q || `${entry.label} ${entry.model} ${entry.kind}`.toLowerCase().includes(q))).slice(0, 1800);
+    const recentRank = new Map(this.recent.map((id, index) => [id, index]));
+    let rows = this.index.assets.filter((entry) => (this.category === 'all' || entry.category === this.category) && (!q || `${entry.label} ${entry.model} ${entry.kind}`.toLowerCase().includes(q)));
+    if (this.scope === 'favorites') rows = rows.filter((entry) => this.favorites.has(entry.id));
+    if (this.scope === 'recent') rows = rows.filter((entry) => recentRank.has(entry.id)).sort((a, b) => (recentRank.get(a.id) ?? 999) - (recentRank.get(b.id) ?? 999));
+    rows = rows.slice(0, 1800);
     this.list.replaceChildren();
     if (!rows.length) {
       const empty = document.createElement('div');
@@ -102,15 +111,22 @@ export class GlobalAssetBrowser extends EventTarget {
       return;
     }
     for (const entry of rows) {
-      const row = document.createElement('button');
+      const row = document.createElement('div');
       row.className = 'global-asset-row';
+      row.draggable = spawnable(entry);
       const icon = entry.kind === 'wmo' ? '▣' : entry.kind === 'creature' ? '●' : entry.kind === 'texture' ? '▧' : entry.kind === 'audio' ? '♪' : '◆';
-      row.innerHTML = `<span class="global-kind ${entry.kind}">${icon}</span><span><strong></strong><small></small></span><span class="global-occurs">${entry.occurrences.toLocaleString()}×</span>`;
+      row.innerHTML = `<span class="global-kind ${entry.kind}">${icon}</span><button class="global-asset-main"><strong></strong><small></small></button><span class="global-occurs">${entry.occurrences.toLocaleString()}×</span><button class="global-favorite ${this.favorites.has(entry.id) ? 'active' : ''}" title="Favorite">★</button>`;
       row.querySelector('strong')!.textContent = entry.label;
       row.querySelector('small')!.textContent = entry.kind === 'creature' ? `${entry.model} · display ${entry.displayId ?? '?'}` : `${entry.model}${entry.representativeTile ? ` · ${entry.representativeTile}` : ''}`;
-      row.title = spawnable(entry) ? 'Double-click to place at the Scene camera focus' : 'Click to preview';
-      row.addEventListener('click', () => this.showPreview(entry));
-      if (spawnable(entry)) row.addEventListener('dblclick', () => void this.spawn(entry));
+      row.title = spawnable(entry) ? 'Double-click or drag into Scene to place' : 'Click to preview';
+      row.querySelector('.global-asset-main')!.addEventListener('click', () => { this.touchRecent(entry.id); this.showPreview(entry); });
+      if (spawnable(entry)) row.querySelector('.global-asset-main')!.addEventListener('dblclick', () => void this.spawn(entry));
+      row.querySelector('.global-favorite')!.addEventListener('click', (event) => { event.stopPropagation(); this.toggleFavorite(entry.id); this.render(); });
+      row.addEventListener('dragstart', (event) => {
+        if (!spawnable(entry)) { event.preventDefault(); return; }
+        event.dataTransfer?.setData('application/x-wowsergl-global-asset', entry.id);
+        if (event.dataTransfer) event.dataTransfer.effectAllowed = 'copy';
+      });
       this.list.append(row);
     }
   }
@@ -133,6 +149,7 @@ export class GlobalAssetBrowser extends EventTarget {
       const image = document.createElement('img');
       image.src = entry.previewUrl;
       image.alt = entry.label;
+      image.addEventListener('error', () => frame.classList.add('preview-error'));
       frame.append(image);
       this.preview.append(frame);
     }
@@ -156,7 +173,7 @@ export class GlobalAssetBrowser extends EventTarget {
     if (spawnable(entry)) {
       const place = document.createElement('button');
       place.className = 'accent content-place-button';
-      place.textContent = 'Place in Scene';
+      place.textContent = 'Place at Scene Focus';
       place.addEventListener('click', () => void this.spawn(entry));
       this.preview.append(place);
     }
@@ -178,18 +195,16 @@ export class GlobalAssetBrowser extends EventTarget {
     this.preview.append(details);
   }
 
-  private async spawn(entry: GlobalAssetEntry & { kind: 'm2' | 'wmo' | 'creature' }) {
-    try {
-      const asset = await this.resolve(entry);
-      const target = this.app.camera.orbit.target.clone();
-      const point = this.ground(target.x, target.y) ?? target;
-      const record = this.app.store.addFromAsset(asset, point, this.app.store.tileKey);
-      if (entry.kind === 'creature') this.components.addComponent(record, 'CreatureSpawn', { displayId: entry.displayId ?? 0 });
-      this.app.bottomPanel.log({ level: 'info', message: `Placed ${entry.label} from the global Content Browser.`, time: new Date() });
-      this.dispatchEvent(new CustomEvent('spawn', { detail: { entry, record } }));
-    } catch (error) {
-      this.app.bottomPanel.log({ level: 'error', message: `Asset placement failed: ${error instanceof Error ? error.message : String(error)}`, time: new Date() });
-    }
+  private async spawn(entry: GlobalAssetEntry & { kind: 'm2' | 'wmo' | 'creature' }, position?: THREE.Vector3) {
+    const asset = await this.resolve(entry);
+    const target = position ?? this.ground(this.app.camera.orbit.target.x, this.app.camera.orbit.target.y) ?? this.app.camera.orbit.target.clone();
+    const record = this.app.store.addFromAsset(asset, target, this.app.store.tileKey);
+    if (entry.kind === 'creature') this.components.addComponent(record, 'CreatureSpawn', { displayId: entry.displayId ?? 0 });
+    this.touchRecent(entry.id);
+    this.app.store.select(record);
+    this.app.bottomPanel.log({ level: 'info', message: `Placed ${entry.label} from the global Content Browser.`, time: new Date() });
+    this.dispatchEvent(new CustomEvent('spawn', { detail: { entry, record } }));
+    return record;
   }
 
   private resolve(entry: GlobalAssetEntry & { kind: 'm2' | 'wmo' | 'creature' }) {
@@ -218,10 +233,52 @@ export class GlobalAssetBrowser extends EventTarget {
     return asset;
   }
 
+  private bindSceneDrop() {
+    const canvas = this.app.renderer.domElement;
+    canvas.addEventListener('dragover', (event) => {
+      if (!event.dataTransfer?.types.includes('application/x-wowsergl-global-asset')) return;
+      event.preventDefault();
+      event.dataTransfer.dropEffect = 'copy';
+    });
+    canvas.addEventListener('drop', (event) => {
+      const id = event.dataTransfer?.getData('application/x-wowsergl-global-asset');
+      if (!id) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      const entry = this.index.assets.find((candidate) => candidate.id === id);
+      if (!entry || !spawnable(entry)) return;
+      const point = this.groundFromScreen(event.clientX, event.clientY);
+      void this.spawn(entry, point ?? undefined).catch((error) => this.app.bottomPanel.log({ level: 'error', message: `Asset placement failed: ${error instanceof Error ? error.message : String(error)}`, time: new Date() }));
+    }, true);
+  }
+
+  private groundFromScreen(clientX: number, clientY: number) {
+    const rect = this.app.renderer.domElement.getBoundingClientRect();
+    const pointer = new THREE.Vector2(((clientX - rect.left) / rect.width) * 2 - 1, -((clientY - rect.top) / rect.height) * 2 + 1);
+    const raycaster = new THREE.Raycaster();
+    raycaster.setFromCamera(pointer, this.app.camera.active);
+    return raycaster.intersectObjects(this.app.scene.children, true).find((candidate) => candidate.object.userData.editorTerrain)?.point.clone() ?? null;
+  }
+
   private ground(x: number, y: number) {
     const raycaster = new THREE.Raycaster(new THREE.Vector3(x, y, 10000), new THREE.Vector3(0, 0, -1), 0, 20000);
     const hit = raycaster.intersectObjects(this.app.scene.children, true).find((candidate) => candidate.object.userData.editorTerrain);
     return hit?.point.clone() ?? null;
+  }
+
+  private toggleFavorite(id: string) {
+    if (this.favorites.has(id)) this.favorites.delete(id); else this.favorites.add(id);
+    localStorage.setItem(FAVORITES_KEY, JSON.stringify([...this.favorites]));
+  }
+
+  private touchRecent(id: string) {
+    this.recent = [id, ...this.recent.filter((value) => value !== id)].slice(0, 40);
+    localStorage.setItem(RECENTS_KEY, JSON.stringify(this.recent));
+  }
+
+  private loadLocalState() {
+    try { this.favorites = new Set(JSON.parse(localStorage.getItem(FAVORITES_KEY) ?? '[]') as string[]); } catch { this.favorites = new Set(); }
+    try { this.recent = (JSON.parse(localStorage.getItem(RECENTS_KEY) ?? '[]') as string[]).slice(0, 40); } catch { this.recent = []; }
   }
 
   private stopAudio() {
