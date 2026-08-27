@@ -1,6 +1,16 @@
 import './styles.css';
 import { EditorApp } from './editor-app';
+import { initializeMeshoptRuntime } from './meshopt-runtime';
+import { initializeOptimizedTextureLoader } from './optimized-texture-loader';
+import { installStudioRefinements } from './studio-refinements';
 
 const root = document.querySelector<HTMLElement>('#app');
 if (!root) throw new Error('Missing #app root');
-new EditorApp(root);
+
+await Promise.all([
+  initializeMeshoptRuntime(),
+  initializeOptimizedTextureLoader(),
+]);
+
+const app = new EditorApp(root);
+installStudioRefinements(app, root);
