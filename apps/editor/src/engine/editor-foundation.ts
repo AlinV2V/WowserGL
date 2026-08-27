@@ -1,4 +1,5 @@
 import './engine-editor.css';
+import './engine-editor-polish.css';
 import type { EditorApp } from '../editor-app';
 import type { EditorRecord } from '../types';
 import { ComponentInspectorPanel } from './component-inspector';
