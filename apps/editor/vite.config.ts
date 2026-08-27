@@ -12,6 +12,7 @@ export default defineConfig(({ mode }) => {
         proxy('/terrain'),
         proxy('/textures'),
         proxy('/models'),
+        proxy('/creatures'),
         proxy('/data'),
         proxy('/basis'),
       ]),
