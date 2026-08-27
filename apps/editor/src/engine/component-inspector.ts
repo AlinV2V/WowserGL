@@ -88,6 +88,7 @@ export class ComponentInspectorPanel {
     body.className = 'component-body';
     body.hidden = isCollapsed;
     for (const field of schema?.fields ?? []) body.append(this.field(record, entry, field));
+    if (entry.type === 'CreatureSpawn') body.append(this.creatureMovementFields(record, entry));
     if (entry.type === 'Path') {
       const note = document.createElement('div');
       note.className = 'component-help';
@@ -98,6 +99,26 @@ export class ComponentInspectorPanel {
     if (entry.type === 'PrefabInstance') body.append(this.prefabActions(record));
     card.append(header, body);
     return card;
+  }
+
+  private creatureMovementFields(record: EditorRecord, entry: StudioComponent) {
+    const host = document.createElement('div');
+    host.className = 'creature-movement-fields';
+    const mode = String(entry.data.movementMode ?? 'idle');
+    host.innerHTML = `<label class="unity-property engine-property"><span>Movement</span><div class="property-control"><select data-creature-movement><option value="idle">Idle</option><option value="random">Random / wander</option><option value="waypoints">Waypoint path</option></select></div></label><label class="unity-property engine-property"><span>Wander radius</span><div class="property-control"><input data-creature-wander type="number" min="0" step="0.5" value="${Number(entry.data.wanderDistance ?? 5)}"/></div></label><div class="component-help">Random movement exports vMaNGOS <code>movement_type=1</code> with this wander radius. An authored Path automatically exports <code>movement_type=2</code>.</div>`;
+    const select = host.querySelector<HTMLSelectElement>('[data-creature-movement]')!;
+    const wander = host.querySelector<HTMLInputElement>('[data-creature-wander]')!;
+    select.value = mode;
+    wander.disabled = mode !== 'random';
+    select.addEventListener('change', () => {
+      this.model.setComponentValue(record, 'CreatureSpawn', 'movementMode', select.value);
+      if (select.value === 'waypoints') {
+        const entity = this.model.entities.get(record.id);
+        if (entity && !this.model.getComponent(entity, 'Path')) this.model.addComponent(record, 'Path');
+      }
+    });
+    wander.addEventListener('change', () => this.model.setComponentValue(record, 'CreatureSpawn', 'wanderDistance', Math.max(0, Number(wander.value))));
+    return host;
   }
 
   private prefabActions(record: EditorRecord) {
