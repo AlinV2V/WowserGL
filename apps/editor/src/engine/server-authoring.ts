@@ -41,8 +41,11 @@ export class ServerAuthoringExporter {
           const index = creatureOffset++;
           const respawn = Math.max(0, Math.floor(Number(creature.data.respawnSeconds ?? 300)));
           const waypoints = Array.isArray(path?.data.waypoints) ? path!.data.waypoints as number[][] : [];
-          const movementType = waypoints.length ? 2 : 0;
-          creatureRows.push(`(@WOWSER_CREATURE_GUID+${index}, ${entry}, ${map}, ${f(position.x)}, ${f(position.y)}, ${f(position.z)}, ${f(orientation, 7)}, 0, ${movementType}, ${respawn}, ${respawn})`);
+          const authoredMode = String(creature.data.movementMode ?? 'idle');
+          const movementType = waypoints.length ? 2 : authoredMode === 'random' ? 1 : 0;
+          const wanderDistance = movementType === 1 ? Math.max(0, Number(creature.data.wanderDistance ?? 5)) : 0;
+          creatureRows.push(`(@WOWSER_CREATURE_GUID+${index}, ${entry}, ${map}, ${f(position.x)}, ${f(position.y)}, ${f(position.z)}, ${f(orientation, 7)}, ${f(wanderDistance, 3)}, ${movementType}, ${respawn}, ${respawn})`);
+          if (authoredMode === 'waypoints' && !waypoints.length) skipped.push(`${entity.name}: waypoint movement is selected but the Path component has no points`);
           if (waypoints.length) {
             const rows = waypoints.filter((point) => point.length >= 3).map((point, pointIndex) => `(@WOWSER_CREATURE_GUID+${index}, ${pointIndex + 1}, ${f(Number(point[0]))}, ${f(Number(point[1]))}, ${f(Number(point[2]))}, 100, 0, 0, 0)`);
             if (rows.length) waypointBlocks.push(`-- ${entity.name}\nINSERT INTO \`creature_movement\` (\`id\`,\`point\`,\`position_x\`,\`position_y\`,\`position_z\`,\`orientation\`,\`waittime\`,\`wander_distance\`,\`script_id\`) VALUES\n${rows.join(',\n')};`);
@@ -66,6 +69,7 @@ export class ServerAuthoringExporter {
       '-- WowserGL Studio server-authoring export',
       `-- Generated ${new Date().toISOString()}`,
       '-- Existing creature_template/gameobject_template entries are required; Studio never invents server template IDs.',
+      '-- Creature movement: 0 = idle, 1 = random/wander, 2 = waypoint path.',
       '',
     ];
     if (creatureRows.length) lines.push(
