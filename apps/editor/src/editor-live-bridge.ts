@@ -22,7 +22,7 @@ export class EditorLiveBridge extends EventTarget {
   private manuallyClosed = false;
   private pending = new Map<string, { type: LiveCommand['type'] | 'project.save'; sentAt: number }>();
 
-  constructor(url = import.meta.env.VITE_STUDIO_BRIDGE_URL ?? 'ws://localhost:5191') {
+  constructor(url = import.meta.env.VITE_STUDIO_BRIDGE_URL ?? 'ws://127.0.0.1:5191') {
     super();
     this.url = url;
   }
@@ -61,7 +61,7 @@ export class EditorLiveBridge extends EventTarget {
   }
 
   setUrl(url: string) {
-    this.url = url.trim() || 'ws://localhost:5191';
+    this.url = url.trim() || 'ws://127.0.0.1:5191';
     this.disconnect();
     this.manuallyClosed = false;
     this.connect();
