@@ -1,19 +1,25 @@
 import type { EditorObjectStore } from '../editor-store';
 import type { EditorRecord } from '../types';
 import type { ComponentField, SceneComponentModel, StudioComponent, StudioComponentType } from './component-model';
+import type { ProjectWorkspace } from './project-workspace';
 
 const escapeHtml = (value: string) => value.replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]!));
+
+type ComponentClipboard = { type: StudioComponentType; data: Record<string, unknown> };
 
 export class ComponentInspectorPanel {
   private host: HTMLElement;
   private record: EditorRecord | null = null;
+  private collapsed = new Set<string>();
+  private clipboard: ComponentClipboard | null = null;
 
-  constructor(root: HTMLElement, private readonly store: EditorObjectStore, private readonly model: SceneComponentModel) {
+  constructor(root: HTMLElement, private readonly store: EditorObjectStore, private readonly model: SceneComponentModel, private readonly workspace: ProjectWorkspace) {
     this.host = document.createElement('div');
     this.host.className = 'studio-component-stack';
     root.querySelector('[data-inspector] [data-content]')?.append(this.host);
     store.addEventListener('selection', (event) => { this.record = (event as CustomEvent<EditorRecord | null>).detail; this.render(); });
     model.addEventListener('change', () => this.render());
+    workspace.addEventListener('change', () => this.render());
     this.record = store.selected;
     this.render();
   }
@@ -35,31 +41,92 @@ export class ComponentInspectorPanel {
   private componentCard(record: EditorRecord, entry: StudioComponent) {
     const schema = this.model.schema(entry.type);
     const card = document.createElement('section');
-    card.className = 'component-card engine-component';
+    const key = `${record.id}:${entry.type}`;
+    const isCollapsed = this.collapsed.has(key);
+    const warning = this.warningFor(entry);
+    card.className = `component-card engine-component${warning ? ' component-has-warning' : ''}${isCollapsed ? ' collapsed' : ''}`;
     const header = document.createElement('div');
     header.className = 'component-head';
     const removable = !['EditorMetadata','Renderable','M2Renderer','WmoRenderer'].includes(entry.type);
-    header.innerHTML = `<span class="component-toggle">▾</span><strong>${escapeHtml(schema?.label ?? entry.type)}</strong><span class="component-badge">${escapeHtml(schema?.category ?? 'Engine')}</span>`;
+    header.innerHTML = `<button class="component-toggle" title="Collapse / expand">${isCollapsed ? '▸' : '▾'}</button><strong>${escapeHtml(schema?.label ?? entry.type)}</strong>${warning ? `<span class="component-warning" title="${escapeHtml(warning)}">!</span>` : ''}<span class="component-badge">${escapeHtml(schema?.category ?? 'Engine')}</span>`;
+    const actions = document.createElement('div');
+    actions.className = 'component-actions';
+    const copy = document.createElement('button');
+    copy.textContent = '⧉';
+    copy.title = 'Copy component values';
+    copy.addEventListener('click', (event) => { event.stopPropagation(); this.clipboard = { type: entry.type, data: structuredClone(entry.data) }; this.render(); });
+    actions.append(copy);
+    if (this.clipboard?.type === entry.type) {
+      const paste = document.createElement('button');
+      paste.textContent = '↧';
+      paste.title = 'Paste component values';
+      paste.addEventListener('click', (event) => { event.stopPropagation(); this.applyValues(record, entry.type, this.clipboard!.data); });
+      actions.append(paste);
+    }
+    if (schema?.defaults && Object.keys(schema.defaults).length) {
+      const reset = document.createElement('button');
+      reset.textContent = '↺';
+      reset.title = 'Reset component to defaults';
+      reset.addEventListener('click', (event) => { event.stopPropagation(); this.applyValues(record, entry.type, schema.defaults); });
+      actions.append(reset);
+    }
     if (removable) {
       const remove = document.createElement('button');
-      remove.className = 'component-menu component-remove';
+      remove.className = 'component-remove';
       remove.textContent = '×';
       remove.title = 'Remove component';
-      remove.addEventListener('click', () => this.model.removeComponent(record, entry.type));
-      header.append(remove);
+      remove.addEventListener('click', (event) => { event.stopPropagation(); this.model.removeComponent(record, entry.type); });
+      actions.append(remove);
     }
+    header.append(actions);
+    header.querySelector('.component-toggle')!.addEventListener('click', () => {
+      if (this.collapsed.has(key)) this.collapsed.delete(key); else this.collapsed.add(key);
+      this.render();
+    });
+
     const body = document.createElement('div');
     body.className = 'component-body';
+    body.hidden = isCollapsed;
     for (const field of schema?.fields ?? []) body.append(this.field(record, entry, field));
     if (entry.type === 'Path') {
       const note = document.createElement('div');
       note.className = 'component-help';
       const waypoints = Array.isArray(entry.data.waypoints) ? entry.data.waypoints.length : 0;
-      note.textContent = `${waypoints} waypoint${waypoints === 1 ? '' : 's'} · use Path Tool in the toolbar to author points directly on terrain.`;
+      note.textContent = `${waypoints} waypoint${waypoints === 1 ? '' : 's'} · use Path Tool in the toolbar; Shift-click a handle to remove it.`;
       body.append(note);
     }
+    if (entry.type === 'PrefabInstance') body.append(this.prefabActions(record));
     card.append(header, body);
     return card;
+  }
+
+  private prefabActions(record: EditorRecord) {
+    const host = document.createElement('div');
+    host.className = 'prefab-actions';
+    const prefab = this.workspace.prefabForRecord(record);
+    const overridden = this.workspace.isPrefabOverridden(record);
+    const status = document.createElement('div');
+    status.className = `component-help prefab-status${overridden ? ' overridden' : ''}`;
+    status.textContent = prefab ? `${prefab.name}${overridden ? ' · instance overrides' : ' · synced'}` : 'Prefab definition is missing.';
+    host.append(status);
+    const row = document.createElement('div');
+    row.className = 'project-actions';
+    const apply = document.createElement('button');
+    apply.textContent = 'Apply';
+    apply.title = 'Apply this instance component values to the prefab definition';
+    apply.disabled = !prefab || !overridden;
+    apply.addEventListener('click', () => this.workspace.applyInstanceToPrefab(record));
+    const revert = document.createElement('button');
+    revert.textContent = 'Revert';
+    revert.disabled = !prefab || !overridden;
+    revert.addEventListener('click', () => this.workspace.revertPrefabInstance(record));
+    const unpack = document.createElement('button');
+    unpack.textContent = 'Unpack';
+    unpack.disabled = !prefab;
+    unpack.addEventListener('click', () => this.workspace.unpackPrefab(record));
+    row.append(apply, revert, unpack);
+    host.append(row);
+    return host;
   }
 
   private field(record: EditorRecord, entry: StudioComponent, field: ComponentField) {
@@ -113,30 +180,55 @@ export class ComponentInspectorPanel {
 
   private addComponentRow(record: EditorRecord) {
     const row = document.createElement('div');
-    row.className = 'add-component-row';
+    row.className = 'add-component-row searchable';
+    const search = document.createElement('input');
+    search.type = 'search';
+    search.placeholder = 'Search components…';
     const select = document.createElement('select');
-    const placeholder = document.createElement('option');
-    placeholder.value = '';
-    placeholder.textContent = 'Add Component…';
-    select.append(placeholder);
-    const entity = this.model.entities.get(record.id);
-    for (const schema of this.model.schemas) {
-      if (['EditorMetadata','Renderable','M2Renderer','WmoRenderer'].includes(schema.type)) continue;
-      if (schema.unique && entity?.components.some((entry) => entry.type === schema.type)) continue;
-      const option = document.createElement('option');
-      option.value = schema.type;
-      option.textContent = `${schema.category} / ${schema.label}`;
-      select.append(option);
-    }
+    const rebuild = () => {
+      const query = search.value.trim().toLowerCase();
+      select.replaceChildren();
+      const placeholder = document.createElement('option');
+      placeholder.value = '';
+      placeholder.textContent = 'Add Component…';
+      select.append(placeholder);
+      const entity = this.model.entities.get(record.id);
+      for (const schema of this.model.schemas) {
+        if (['EditorMetadata','Renderable','M2Renderer','WmoRenderer'].includes(schema.type)) continue;
+        if (schema.unique && entity?.components.some((entry) => entry.type === schema.type)) continue;
+        if (query && !`${schema.category} ${schema.label} ${schema.type}`.toLowerCase().includes(query)) continue;
+        const option = document.createElement('option');
+        option.value = schema.type;
+        option.textContent = `${schema.category} / ${schema.label}`;
+        select.append(option);
+      }
+    };
+    search.addEventListener('input', rebuild);
+    rebuild();
     const button = document.createElement('button');
     button.className = 'accent';
     button.textContent = 'Add';
     button.addEventListener('click', () => {
       if (!select.value) return;
       this.model.addComponent(record, select.value as StudioComponentType);
-      select.value = '';
+      search.value = '';
     });
-    row.append(select, button);
+    row.append(search, select, button);
     return row;
+  }
+
+  private applyValues(record: EditorRecord, type: StudioComponentType, values: Record<string, unknown>) {
+    const schema = this.model.schema(type);
+    for (const [key, value] of Object.entries(values)) {
+      if (schema?.fields.find((field) => field.key === key)?.readonly) continue;
+      this.model.setComponentValue(record, type, key, structuredClone(value));
+    }
+  }
+
+  private warningFor(entry: StudioComponent) {
+    if ((entry.type === 'CreatureSpawn' || entry.type === 'GameObjectSpawn') && Number(entry.data.templateEntry ?? 0) <= 0) return 'A server template entry is required before vMaNGOS export.';
+    if (entry.type === 'Script' && entry.data.enabled !== false && !String(entry.data.module ?? '').trim()) return 'Enabled Script component has no module.';
+    if (entry.type === 'Path' && !Array.isArray(entry.data.waypoints)) return 'Waypoint payload is invalid.';
+    return '';
   }
 }
