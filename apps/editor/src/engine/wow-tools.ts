@@ -12,6 +12,7 @@ export class WowWorldTools extends EventTarget {
   private pathButton: HTMLButtonElement;
 
   constructor(private readonly app: EditorApp, private readonly root: HTMLElement, private readonly components: SceneComponentModel) {
+    super();
     this.helperRoot.name = '__studio_world_tools';
     this.helperRoot.userData.editorNonSelectable = true;
     app.scene.add(this.helperRoot);
