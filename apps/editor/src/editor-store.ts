@@ -16,6 +16,10 @@ export const applySnapshot = (object: THREE.Object3D, snapshot: TransformSnapsho
   object.updateMatrixWorld(true);
 };
 
+export const isRecordLocked = (record: EditorRecord | null | undefined) => !!record && (
+  record.object.userData.studioLocked === true || record.object.userData.studioLayerLocked === true
+);
+
 const objectStats = (root: THREE.Object3D) => {
   let triangles = 0;
   const textures = new Set<string>();
