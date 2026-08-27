@@ -1,9 +1,9 @@
-import { existsSync, readFileSync, readdirSync, statSync, writeFileSync, mkdirSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, writeFileSync, mkdirSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import process from 'node:process';
 
 const ROOT = resolve(new URL('..', import.meta.url).pathname.replace(/^\/(?:([A-Za-z]):)/, '$1:'));
-const OUTPUT = join(ROOT, 'apps', 'editor', 'public', 'studio-asset-index.json');
+const OUTPUT = process.env.STUDIO_ASSET_INDEX_OUTPUT ? resolve(process.env.STUDIO_ASSET_INDEX_OUTPUT) : join(ROOT, 'apps', 'editor', 'public', 'studio-asset-index.json');
 const force = process.argv.includes('--force');
 const optional = process.argv.includes('--if-available');
 const candidates = [
@@ -27,6 +27,7 @@ const safeJson = (path) => {
   try { return JSON.parse(readFileSync(path, 'utf8')); } catch { return null; }
 };
 const labelFor = (model) => normalized(model).split('/').pop() || String(model);
+const publicPath = (url) => join(PUBLIC, String(url ?? '').replace(/^\/+/, '').split(/[?#]/, 1)[0]);
 
 if (!PUBLIC) {
   const message = '[studio-index] CleanClientMMO public directory not found. Set CLEANCLIENT_PUBLIC_DIR or place VanillaGL beside WowserGL.';
@@ -46,7 +47,7 @@ const tileEntries = Array.isArray(tileIndexRaw) ? tileIndexRaw : tileIndexRaw?.t
 const mapByTile = new Map(tileEntries.map((entry) => [String(entry.key), Number(entry.map ?? 0)]));
 const assets = new Map();
 
-const upsert = ({ kind, model, tileKey, mapId, count = 1, textures = [], displayId }) => {
+const upsert = ({ kind, model, tileKey, mapId, count = 1, textures = [], displayId, category, previewUrl, metadata }) => {
   const clean = normalized(model);
   if (!clean) return;
   const id = kind === 'creature' ? `creature:${displayId}` : `${kind}:${clean.toLowerCase()}`;
@@ -55,6 +56,7 @@ const upsert = ({ kind, model, tileKey, mapId, count = 1, textures = [], display
     existing.occurrences += count;
     if (!existing.representativeTile && tileKey) existing.representativeTile = tileKey;
     if (existing.mapId === undefined && mapId !== undefined) existing.mapId = mapId;
+    if (!existing.previewUrl && previewUrl) existing.previewUrl = normalized(previewUrl);
     if (textures.length) existing.textures = [...new Set([...(existing.textures ?? []), ...textures.map(normalized).filter(Boolean)])].slice(0, 24);
     return;
   }
@@ -63,10 +65,12 @@ const upsert = ({ kind, model, tileKey, mapId, count = 1, textures = [], display
     kind,
     model: clean,
     label: kind === 'creature' ? `${labelFor(clean)} · #${displayId}` : labelFor(clean),
-    category: kind === 'creature' ? 'creatures' : categoryFor(clean),
+    category: category ?? (kind === 'creature' ? 'creatures' : categoryFor(clean)),
     ...(tileKey ? { representativeTile: tileKey } : {}),
     ...(mapId !== undefined ? { mapId } : {}),
     ...(displayId !== undefined ? { displayId } : {}),
+    ...(previewUrl ? { previewUrl: normalized(previewUrl) } : {}),
+    ...(metadata ? { metadata } : {}),
     occurrences: count,
     ...(textures.length ? { textures: [...new Set(textures.map(normalized).filter(Boolean))].slice(0, 24) } : {}),
   });
@@ -105,7 +109,48 @@ if (creatureManifest && typeof creatureManifest === 'object') {
   for (const [id, entry] of Object.entries(creatureManifest)) {
     const displayId = Number(id);
     if (!Number.isFinite(displayId) || !entry?.path) continue;
-    upsert({ kind: 'creature', model: entry.path, count: 1, textures: entry.textures ?? [], displayId });
+    upsert({ kind: 'creature', model: entry.path, count: 1, textures: entry.textures ?? [], displayId, metadata: { modelId: entry.modelId ?? null, scale: entry.scale ?? 1 } });
+  }
+}
+
+const addTextureRegistry = (registry) => {
+  for (const [logical, descriptor] of Object.entries(registry?.assets ?? {})) {
+    const variants = descriptor?.variants ?? {};
+    upsert({
+      kind: 'texture',
+      model: logical,
+      category: 'textures',
+      count: 1,
+      previewUrl: variants.webp ?? variants.source ?? logical,
+      metadata: { ktx2: variants.ktx2 ?? null, webp: variants.webp ?? null, source: variants.source ?? null },
+    });
+  }
+};
+const legacyTextures = safeJson(join(PUBLIC, 'data', 'texture-assets.json'));
+if (legacyTextures?.assets) addTextureRegistry(legacyTextures);
+else {
+  const catalog = safeJson(join(PUBLIC, 'data', 'catalogs', 'texture-assets', 'index.json'));
+  for (const shard of Object.values(catalog?.shards ?? {})) {
+    if (!shard?.url) continue;
+    const registry = safeJson(publicPath(shard.url));
+    if (registry) addTextureRegistry(registry);
+  }
+}
+
+const soundManifest = safeJson(join(PUBLIC, 'sounds', 'sound-manifest.json'));
+if (soundManifest?.entries && typeof soundManifest.entries === 'object') {
+  for (const [id, entry] of Object.entries(soundManifest.entries)) {
+    const files = Array.isArray(entry?.files) ? entry.files.map(normalized).filter(Boolean) : [];
+    const first = files[0];
+    const previewUrl = first ? (/^\//.test(first) ? first : `/sounds/${first.replace(/^sounds\//, '')}`) : undefined;
+    upsert({
+      kind: 'audio',
+      model: String(entry?.name || id),
+      category: 'audio',
+      count: Math.max(1, files.length),
+      previewUrl,
+      metadata: { soundId: entry?.id ?? Number(id) || id, files, loop: entry?.loop === true, volume: entry?.volume ?? 1 },
+    });
   }
 }
 
