@@ -107,15 +107,15 @@ export class TerrainAuthoring extends EventTarget {
     return raycaster.intersectObject(terrain, false)[0] ?? null;
   }
 
-  private terrain() {
-    let found: THREE.Mesh | null = null;
+  private terrain(): THREE.Mesh | null {
+    const matches: THREE.Mesh[] = [];
     this.app.scene.traverse((object) => {
-      if (found || !object.userData.editorTerrain) return;
+      if (matches.length || !object.userData.editorTerrain) return;
       if (object.userData.editorTileKey && object.userData.editorTileKey !== this.app.store.tileKey) return;
       const mesh = object as THREE.Mesh;
-      if (mesh.isMesh) found = mesh;
+      if (mesh.isMesh) matches.push(mesh);
     });
-    return found;
+    return matches[0] ?? null;
   }
 
   private ensureOriginal(terrain: THREE.Mesh) {
