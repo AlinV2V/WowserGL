@@ -89,6 +89,7 @@ export class TerrainAuthoring extends EventTarget {
         for (const [index, z] of values) attr.setZ(index, z);
         this.finishGeometry(terrain);
         this.capturePatch(terrain, values.keys());
+        this.persist();
       };
       this.app.history.pushApplied({ label: `Terrain ${this.mode}`, undo: () => apply(before), redo: () => apply(after) });
       this.persist();
@@ -183,7 +184,6 @@ export class TerrainAuthoring extends EventTarget {
       else patch.vertices[String(index)] = Number(z.toFixed(5));
     }
     if (Object.keys(patch.vertices).length) this.patches.set(tileKey, patch); else this.patches.delete(tileKey);
-    this.persist();
   }
 
   private restoreCurrentTile() {
