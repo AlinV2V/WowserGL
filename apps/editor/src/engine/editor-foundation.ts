@@ -5,6 +5,7 @@ import type { EditorApp } from '../editor-app';
 import type { EditorRecord } from '../types';
 import { ComponentInspectorPanel } from './component-inspector';
 import { SceneComponentModel } from './component-model';
+import { CustomWorldAuthoring } from './custom-content-authoring';
 import { DebugViewController } from './debug-views';
 import { EngineHostRegistry } from './engine-host';
 import { EngineToolsPanel } from './engine-tools-panel';
@@ -17,6 +18,7 @@ import { RuntimeGameView } from './runtime-game-view';
 import { ServerAuthoringExporter } from './server-authoring';
 import { StudioShellControls } from './shell-controls';
 import { StudioSimulationClock } from './simulation-clock';
+import { TerrainAuthoring } from './terrain-authoring';
 import { StudioValidator } from './validation';
 import { WowWorldTools } from './wow-tools';
 
@@ -29,6 +31,8 @@ export type EngineEditorFoundation = {
   hosts: EngineHostRegistry;
   simulation: StudioSimulationClock;
   plugins: StudioPluginHost;
+  terrain: TerrainAuthoring;
+  customWorld: CustomWorldAuthoring;
   componentInspector: ComponentInspectorPanel;
   gameView: RuntimeGameView;
   contentBrowser: GlobalAssetBrowser;
@@ -55,6 +59,8 @@ export function installEngineEditorFoundation(app: EditorApp, root: HTMLElement)
     components.updateSimulation(dt, elapsed);
   });
   const plugins = new StudioPluginHost({ app, components, workspace, profiler, validator, debug });
+  const terrain = new TerrainAuthoring(app, plugins);
+  const customWorld = new CustomWorldAuthoring(app, components, workspace, simulation, terrain, plugins);
   const componentInspector = new ComponentInspectorPanel(root, app.store, components, workspace);
   const gameView = new RuntimeGameView(app, root);
   const contentBrowser = new GlobalAssetBrowser(app, root, components);
@@ -95,6 +101,7 @@ export function installEngineEditorFoundation(app: EditorApp, root: HTMLElement)
     }
     if (event.key === 'Escape') {
       wowTools.togglePathMode(false);
+      terrain.setMode('off');
       if (gameView.maximized) gameView.toggleMaximized(false);
     }
   });
@@ -108,6 +115,8 @@ export function installEngineEditorFoundation(app: EditorApp, root: HTMLElement)
     hosts,
     simulation,
     plugins,
+    terrain,
+    customWorld,
     componentInspector,
     gameView,
     contentBrowser,
@@ -128,14 +137,17 @@ export function installEngineEditorFoundation(app: EditorApp, root: HTMLElement)
     history: app.history,
     engineHosts: hosts,
     simulation,
+    terrain,
+    customWorld,
     saveWorkspace: () => workspace.save(),
+    exportCustomContent: () => customWorld.exportPackage(),
     validate: () => validator.run(),
     captureProfile: () => ({ summary: profiler.summary(), drawables: profiler.captureFrame() }),
   });
 
   app.bottomPanel.log({
     level: 'info',
-    message: 'Engine editor foundation ready: components, project workspace, nested hierarchy, audited shell controls, functional preview pause/step, validation, profiler, frame debugger, dependency graph, reusable prefabs, server authoring, WoW tools and authoritative CleanClient Game view.',
+    message: 'Engine editor foundation ready: components, project workspace, custom world authoring, terrain sculpting, nested hierarchy, audited shell controls, functional preview pause/step, validation, profiler, frame debugger, dependency graph, reusable prefabs, server authoring, WoW tools and authoritative CleanClient Game view.',
     time: new Date(),
   });
 
