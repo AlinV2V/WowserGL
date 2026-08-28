@@ -7,13 +7,7 @@ const read = (path) => readFileSync(join(root, path), 'utf8');
 const has = (source, fragment, label = fragment) => assert.ok(source.includes(fragment), `Missing control/backend path: ${label}`);
 const lacks = (source, fragment, label = fragment) => assert.ok(!source.includes(fragment), `Stale control/pipeline remains: ${label}`);
 const occurrences = (source, fragment) => source.split(fragment).length - 1;
-const auditRenderedButtons = (label, source) => {
-  const markers = [...new Set([...source.matchAll(/<button\b[^>]*\b(data-[\w-]+)(?:=|\s|>)/g)].map((match) => match[1]))];
-  for (const marker of markers) {
-    assert.ok(occurrences(source, marker) >= 2, `Rendered ${label} button ${marker} has no visible binding/reference path`);
-  }
-  return markers.length;
-};
+const renderedButtonMarkers = (source) => [...new Set([...source.matchAll(/<button\b[^>]*\b(data-[\w-]+)(?:=|\s|>)/g)].map((match) => match[1]))];
 
 const editor = read('apps/editor/src/editor-app.ts');
 const shell = read('apps/editor/src/engine/shell-controls.ts');
@@ -145,7 +139,14 @@ const buttonModules = [
   ['ComponentInspector', componentInspector], ['EngineTools', tools], ['ContentBrowser', globalAssets], ['PrefabBrowser', prefabBrowser],
   ['GameView', game], ['Terrain', terrain], ['CustomContent', customContent], ['WoWTools', wowTools],
 ];
+const bindingSource = [...buttonModules.map(([, source]) => source), shell, simulation, foundation].join('\n');
 let auditedRenderedButtons = 0;
-for (const [label, source] of buttonModules) auditedRenderedButtons += auditRenderedButtons(label, source);
+for (const [label, source] of buttonModules) {
+  const markers = renderedButtonMarkers(source);
+  for (const marker of markers) {
+    assert.ok(occurrences(bindingSource, marker) >= 2, `Rendered ${label} button ${marker} has no controller/binding reference anywhere in the editor wiring set`);
+  }
+  auditedRenderedButtons += markers.length;
+}
 
 console.log(`[engine-test] audited ${menus.length} menus, ${auditedRenderedButtons} rendered data-button bindings, custom world/terrain pipelines and ${commandTypes.length} live command families`);
