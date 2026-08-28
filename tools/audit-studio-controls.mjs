@@ -96,7 +96,7 @@ for (const marker of ['data-global-search', 'data-global-scope', 'data-global-ca
 
 for (const marker of ['data-terrain-mode', 'data-terrain-radius', 'data-terrain-strength', 'data-terrain-height', 'data-terrain-revert']) has(terrain, marker, `Terrain ${marker}`);
 has(terrain, "this.app.history.pushApplied", 'undoable terrain strokes');
-has(terrain, "format", 'terrain package data');
+has(customContent, 'terrain: this.terrain.snapshot()', 'terrain package consumer');
 lacks(terrain, "pushTerrain", 'no fake terrain runtime push');
 
 for (const marker of [
