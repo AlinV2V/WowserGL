@@ -55,10 +55,13 @@ export type InteractionProfile = {
 
 export type CustomEntityProfile = {
   id: string;
+  /** Session-stable editor binding. Source ID remains the durable binding for baked placements. */
+  recordId?: string;
   tileKey: string;
   kind: EditorRecord['kind'];
   model: string;
   sourceId?: string | number;
+  /** Last authored world position, used to migrate legacy/custom profiles after a reload. */
   anchor: [number, number, number];
   behavior: CustomBehaviorProfile;
   character: CharacterAuthoringProfile;
@@ -127,7 +130,11 @@ export class CustomWorldAuthoring extends EventTarget {
       },
     });
     app.store.addEventListener('selection', () => this.renderCurrent());
-    app.store.addEventListener('change', () => this.persist());
+    app.store.addEventListener('change', (event) => {
+      const record = (event as CustomEvent<EditorRecord | undefined>).detail;
+      if (record) this.syncProfileIdentity(record);
+      this.persist();
+    });
     terrain.addEventListener('change', () => this.persist());
     simulation.addEventListener('tick', (event) => this.updateBehaviorMarkers((event as CustomEvent<{ dt: number }>).detail.dt));
   }
@@ -169,7 +176,7 @@ export class CustomWorldAuthoring extends EventTarget {
     if (!profile && create) {
       const world = record.object.getWorldPosition(new THREE.Vector3());
       profile = {
-        id: uuid(), tileKey: record.tileKey, kind: record.kind, model: record.model, sourceId: record.sourceId,
+        id: uuid(), recordId: record.id, tileKey: record.tileKey, kind: record.kind, model: record.model, sourceId: record.sourceId,
         anchor: world.toArray() as [number, number, number],
         behavior: defaultBehavior(), character: defaultCharacter(), quest: defaultQuest(), interaction: defaultInteraction(),
       };
@@ -179,8 +186,23 @@ export class CustomWorldAuthoring extends EventTarget {
     return profile;
   }
 
+  private bindProfile(record: EditorRecord, profile: CustomEntityProfile) {
+    profile.recordId = record.id;
+    if (record.sourceId !== undefined) profile.sourceId = record.sourceId;
+    profile.tileKey = record.tileKey;
+    profile.kind = record.kind;
+    profile.model = record.model;
+    profile.anchor = record.object.getWorldPosition(new THREE.Vector3()).toArray() as [number, number, number];
+    return profile;
+  }
+
   private findProfile(record: EditorRecord) {
-    if (record.sourceId !== undefined) return this.profiles.find((profile) => profile.tileKey === record.tileKey && profile.kind === record.kind && profile.sourceId !== undefined && String(profile.sourceId) === String(record.sourceId) && normalized(profile.model) === normalized(record.model)) ?? null;
+    const direct = this.profiles.find((profile) => profile.recordId === record.id);
+    if (direct) return direct;
+    if (record.sourceId !== undefined) {
+      const source = this.profiles.find((profile) => profile.tileKey === record.tileKey && profile.kind === record.kind && profile.sourceId !== undefined && String(profile.sourceId) === String(record.sourceId) && normalized(profile.model) === normalized(record.model));
+      return source ? this.bindProfile(record, source) : null;
+    }
     const position = record.object.getWorldPosition(new THREE.Vector3());
     let best: { profile: CustomEntityProfile; distance: number } | null = null;
     for (const profile of this.profiles) {
@@ -188,7 +210,12 @@ export class CustomWorldAuthoring extends EventTarget {
       const distance = position.distanceTo(new THREE.Vector3().fromArray(profile.anchor));
       if (distance <= 3 && (!best || distance < best.distance)) best = { profile, distance };
     }
-    return best?.profile ?? null;
+    return best ? this.bindProfile(record, best.profile) : null;
+  }
+
+  private syncProfileIdentity(record: EditorRecord) {
+    const profile = this.findProfile(record);
+    if (profile) this.bindProfile(record, profile);
   }
 
   private captureVariant(record: EditorRecord, name: string) {
