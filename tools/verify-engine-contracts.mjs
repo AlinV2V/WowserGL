@@ -40,10 +40,18 @@ requireText('apps/editor/src/editor-hierarchy.ts', [
 ]);
 requireText('apps/editor/src/engine/editor-foundation.ts', [
   'SceneComponentModel', 'ProjectWorkspace', 'StudioProfiler', 'RuntimeGameView', 'GlobalAssetBrowser', 'WowWorldTools',
-  'setComponentModel(', 'editorDuplicatedFrom', 'captureProfile',
+  'setComponentModel(', 'editorDuplicatedFrom', 'captureProfile', 'TerrainAuthoring', 'CustomWorldAuthoring', 'EditorLockGuards',
 ]);
 requireText('apps/editor/src/editor-live-bridge.ts', [
   "type: 'object.spawn'", "type: 'object.delete'", "type: 'material.set'", "type: 'project.apply'",
+  'previewLight(', 'previewBehavior(', 'previewCharacter(',
+]);
+requireText('apps/editor/src/engine/custom-content-authoring.ts', [
+  "format: 'vanillagl-custom-content'", 'recordId?: string', 'profile.recordId === record.id',
+  'syncProfileIdentity(record)', 'profile.anchor = record.object.getWorldPosition', 'terrain: this.terrain.snapshot()',
+]);
+requireText('apps/editor/src/engine/terrain-authoring.ts', [
+  "'raise'", "'lower'", "'smooth'", "'flatten'", 'pushApplied(', 'capturePatch(', 'this.persist()',
 ]);
 requireText('apps/editor/src/engine/server-authoring.ts', [
   'creature_movement', 'CreatureSpawn', 'GameObjectSpawn',
@@ -53,5 +61,6 @@ const project = JSON.parse(read('package.json'));
 assert.ok(project.scripts?.['index:assets'], 'package.json must expose index:assets');
 assert.ok(project.scripts?.['verify:engine'], 'package.json must expose verify:engine');
 assert.ok(project.scripts?.['test:asset-index'], 'package.json must expose deterministic asset-index testing');
+assert.ok(project.scripts?.['test:bridge'], 'package.json must expose live bridge integration testing');
 
-console.log('[engine-test] Studio architecture contracts verified');
+console.log('[engine-test] Studio architecture, custom-content identity, terrain and runtime contracts verified');
