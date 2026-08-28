@@ -11,6 +11,7 @@ import { DebugViewController } from './debug-views';
 import { EngineHostRegistry } from './engine-host';
 import { EngineToolsPanel } from './engine-tools-panel';
 import { GlobalAssetBrowser } from './global-asset-browser';
+import { EditorLockGuards } from './lock-guards';
 import { StudioPluginHost } from './plugin-host';
 import { PrefabBrowser } from './prefab-browser';
 import { StudioProfiler } from './profiler';
@@ -34,6 +35,7 @@ export type EngineEditorFoundation = {
   plugins: StudioPluginHost;
   terrain: TerrainAuthoring;
   customWorld: CustomWorldAuthoring;
+  lockGuards: EditorLockGuards;
   componentInspector: ComponentInspectorPanel;
   gameView: RuntimeGameView;
   contentBrowser: GlobalAssetBrowser;
@@ -70,6 +72,7 @@ export function installEngineEditorFoundation(app: EditorApp, root: HTMLElement)
   const serverAuthoring = new ServerAuthoringExporter(app, components, root);
   const toolsPanel = new EngineToolsPanel(app, root, components, workspace, profiler, validator, debug, plugins);
   const shellControls = new StudioShellControls(app, root, debug);
+  const lockGuards = new EditorLockGuards(app, root);
   app.hierarchy.setComponentModel(components, app.history);
 
   app.store.addEventListener('change', (event) => {
@@ -118,6 +121,7 @@ export function installEngineEditorFoundation(app: EditorApp, root: HTMLElement)
     plugins,
     terrain,
     customWorld,
+    lockGuards,
     componentInspector,
     gameView,
     contentBrowser,
@@ -148,7 +152,7 @@ export function installEngineEditorFoundation(app: EditorApp, root: HTMLElement)
 
   app.bottomPanel.log({
     level: 'info',
-    message: 'Engine editor foundation ready: components, project workspace, custom world authoring, terrain sculpting, nested hierarchy, audited shell controls, functional preview pause/step, validation, profiler, frame debugger, dependency graph, reusable prefabs, server authoring, WoW tools and authoritative CleanClient Game view.',
+    message: 'Engine editor foundation ready: components, project workspace, custom world authoring, terrain sculpting, nested hierarchy, cross-editor lock guards, audited shell controls, functional preview pause/step, validation, profiler, frame debugger, dependency graph, reusable prefabs, server authoring, WoW tools and authoritative CleanClient Game view.',
     time: new Date(),
   });
 
