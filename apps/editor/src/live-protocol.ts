@@ -25,7 +25,14 @@ export type LiveCommand =
   | { type: 'character.preview'; target: LiveTarget; character: StudioCharacterPreview }
   | { type: 'character.clear'; target: LiveTarget };
 
-export type LiveProjectPayload = { mapId: number; tileKey: string; objects: Array<{ target: LiveTarget; state: 'added' | 'modified' | 'deleted'; transform?: SerializedObject }>; materials: MaterialOverride[]; environment?: EnvironmentState };
+export type LiveProjectPayload = {
+  mapId: number;
+  tileKey: string;
+  objects: Array<{ target: LiveTarget; state: 'added' | 'modified' | 'deleted'; transform?: SerializedObject }>;
+  materials: MaterialOverride[];
+  environment?: EnvironmentState;
+};
+
 export type BridgePacket =
   | { type: 'bridge.hello'; role: 'studio' | 'runtime' | 'runtime-extension'; id: string; runtimes: number; extensions?: number; studios: number; cachedProject?: LiveProjectPayload }
   | { type: 'bridge.peers'; runtimes: number; extensions?: number; studios: number }
@@ -34,6 +41,14 @@ export type BridgePacket =
   | { type: 'bridge.log'; level: 'info' | 'warn' | 'error'; message: string; runtime?: string }
   | { type: 'project.save'; id: string; project: LiveProjectPayload }
   | { type: 'project.saved'; id: string; path: string; ok: boolean; message?: string }
-  | { type: 'runtime.state'; runtime: string; sceneReady: boolean; mapId?: number; tileKey?: string };
+  | {
+      type: 'runtime.state';
+      runtime: string;
+      sceneReady: boolean;
+      mapId?: number;
+      tileKey?: string;
+      source?: string;
+      capabilities?: LiveCommand['type'][];
+    };
 
 export const makeCommandId = () => globalThis.crypto?.randomUUID?.() ?? `cmd-${Date.now()}-${Math.random().toString(36).slice(2)}`;
