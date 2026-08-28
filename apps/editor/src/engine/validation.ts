@@ -4,7 +4,8 @@ import type { SceneComponentModel } from './component-model';
 
 export type ValidationSeverity = 'error' | 'warning' | 'info';
 export type ValidationIssue = { id: string; severity: ValidationSeverity; code: string; message: string; recordId?: string };
-export type StudioValidatorFn = (store: EditorObjectStore, components: SceneComponentModel) => ValidationIssue[];
+export type ValidationInput = Omit<ValidationIssue, 'id'> & { id?: string };
+export type StudioValidatorFn = (store: EditorObjectStore, components: SceneComponentModel) => ValidationInput[];
 
 const finite = (values: number[]) => values.every(Number.isFinite);
 
@@ -77,8 +78,11 @@ export class StudioValidator extends EventTarget {
       if (!box.isEmpty() && !finite([...box.min.toArray(), ...box.max.toArray()])) issues.push(this.issue('error', 'INVALID_BOUNDS', 'Renderable generated invalid world bounds.', record.id));
     }
     for (const validator of this.extra) {
-      try { issues.push(...validator(this.store, this.components)); }
-      catch (error) { issues.push(this.issue('error', 'PLUGIN_VALIDATOR_FAILED', error instanceof Error ? error.message : String(error))); }
+      try {
+        for (const input of validator(this.store, this.components)) {
+          issues.push(input.id ? input as ValidationIssue : this.issue(input.severity, input.code, input.message, input.recordId));
+        }
+      } catch (error) { issues.push(this.issue('error', 'PLUGIN_VALIDATOR_FAILED', error instanceof Error ? error.message : String(error))); }
     }
     this.issues = issues;
     this.dispatchEvent(new CustomEvent('change', { detail: issues }));
