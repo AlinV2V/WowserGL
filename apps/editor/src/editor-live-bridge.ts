@@ -1,5 +1,13 @@
 import type { EditorRecord, EnvironmentState, MaterialOverride, SerializedObject } from './types';
-import type { BridgePacket, LiveCommand, LiveProjectPayload, LiveTarget } from './live-protocol';
+import type {
+  BridgePacket,
+  LiveCommand,
+  LiveProjectPayload,
+  LiveTarget,
+  StudioBehaviorPreview,
+  StudioCharacterPreview,
+  StudioLightPreview,
+} from './live-protocol';
 import { makeCommandId } from './live-protocol';
 
 export type BridgeStatus = 'offline' | 'connecting' | 'connected' | 'runtime-ready';
@@ -15,6 +23,7 @@ export const liveTargetFor = (record: EditorRecord): LiveTarget => ({
 export class EditorLiveBridge extends EventTarget {
   status: BridgeStatus = 'offline';
   runtimes = 0;
+  extensions = 0;
   studios = 0;
   url: string;
   private socket: WebSocket | null = null;
@@ -45,6 +54,7 @@ export class EditorLiveBridge extends EventTarget {
     socket.addEventListener('close', () => {
       if (this.socket === socket) this.socket = null;
       this.runtimes = 0;
+      this.extensions = 0;
       this.setStatus('offline');
       this.dispatchEvent(new Event('peers'));
       if (!this.manuallyClosed) this.reconnectTimer = window.setTimeout(() => this.connect(), 1600);
@@ -114,6 +124,26 @@ export class EditorLiveBridge extends EventTarget {
     return this.command({ type: 'selection.focus', target: liveTargetFor(record) });
   }
 
+  previewLight(record: EditorRecord, light: StudioLightPreview) {
+    return this.command({ type: 'light.preview', target: liveTargetFor(record), light });
+  }
+
+  previewBehavior(record: EditorRecord, behavior: StudioBehaviorPreview) {
+    return this.command({ type: 'behavior.preview', target: liveTargetFor(record), behavior });
+  }
+
+  stopBehavior(record: EditorRecord) {
+    return this.command({ type: 'behavior.stop', target: liveTargetFor(record) });
+  }
+
+  previewCharacter(record: EditorRecord, character: StudioCharacterPreview) {
+    return this.command({ type: 'character.preview', target: liveTargetFor(record), character });
+  }
+
+  clearCharacter(record: EditorRecord) {
+    return this.command({ type: 'character.clear', target: liveTargetFor(record) });
+  }
+
   openGame(gameUrl = import.meta.env.VITE_VANILLAGL_GAME_URL ?? 'http://localhost:5173/') {
     const url = new URL(gameUrl, location.href);
     url.searchParams.set('studioBridge', this.url);
@@ -130,9 +160,10 @@ export class EditorLiveBridge extends EventTarget {
     }
     if (packet.type === 'bridge.hello' || packet.type === 'bridge.peers') {
       this.runtimes = packet.runtimes;
+      this.extensions = packet.extensions ?? 0;
       this.studios = packet.studios;
       this.setStatus(this.runtimes > 0 ? 'runtime-ready' : 'connected');
-      this.dispatchEvent(new CustomEvent('peers', { detail: { runtimes: this.runtimes, studios: this.studios } }));
+      this.dispatchEvent(new CustomEvent('peers', { detail: { runtimes: this.runtimes, extensions: this.extensions, studios: this.studios } }));
       if (packet.type === 'bridge.hello' && packet.cachedProject) {
         this.dispatchEvent(new CustomEvent('cached-project', { detail: packet.cachedProject }));
       }
@@ -142,7 +173,7 @@ export class EditorLiveBridge extends EventTarget {
       const pending = this.pending.get(packet.id);
       this.pending.delete(packet.id);
       const elapsed = pending ? Math.round(performance.now() - pending.sentAt) : 0;
-      this.log(packet.ok ? 'info' : 'error', `${packet.commandType} ${packet.ok ? 'applied' : 'failed'}${elapsed ? ` in ${elapsed}ms` : ''}${packet.message ? ` — ${packet.message}` : ''}`);
+      this.log(packet.ok ? 'info' : 'error', `${packet.commandType} ${packet.ok ? 'applied' : 'failed'}${elapsed ? ` in ${elapsed}ms` : ''}${packet.message ? ` — ${packet.message}` : ''}`, packet.runtime);
       this.dispatchEvent(new CustomEvent('ack', { detail: packet }));
       return;
     }
