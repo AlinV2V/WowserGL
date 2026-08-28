@@ -17,6 +17,10 @@ requireText('apps/editor/src/engine/project-workspace.ts', [
   "version: 2", "format: 'wowsergl-studio-project'", 'bindings:', 'prefabs:', 'recoveryAvailable',
   'applyInstanceToPrefab(', 'revertPrefabInstance(', 'unpackPrefab(', 'importFile(',
 ]);
+const workspaceSource = read('apps/editor/src/engine/project-workspace.ts');
+for (const staleSetting of ['liveSyncPreferred', 'authoritativeGameView']) {
+  assert.ok(!workspaceSource.includes(staleSetting), `project workspace still persists inert setting: ${staleSetting}`);
+}
 requireText('apps/editor/src/engine/runtime-game-view.ts', [
   'studioBridge', 'studioEmbedded', 'RuntimeGameView', 'toggleMaximized(', 'reload()',
 ]);
