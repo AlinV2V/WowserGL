@@ -23,7 +23,7 @@ export type StudioProjectDocument = {
   layers: StudioLayer[];
   bookmarks: StudioBookmark[];
   prefabs: StudioPrefab[];
-  settings: { autosave: boolean; liveSyncPreferred: boolean; authoritativeGameView: boolean };
+  settings: { autosave: boolean };
 };
 
 const STORAGE = 'wowsergl:project:v2';
@@ -62,7 +62,7 @@ export class ProjectWorkspace extends EventTarget {
   bookmarks: StudioBookmark[] = [];
   prefabs: StudioPrefab[] = [];
   recentProjects: RecentStudioProject[] = [];
-  settings = { autosave: true, liveSyncPreferred: false, authoritativeGameView: true };
+  settings = { autosave: true };
   private saveTimer = 0;
   private recoveryTimer = 0;
   private savedBindings = new Map<string, SerializedStudioEntity>();
@@ -310,7 +310,7 @@ export class ProjectWorkspace extends EventTarget {
     this.layers = project.layers?.length ? project.layers.map((layer) => ({ ...layer })) : defaultLayers();
     this.bookmarks = (project.bookmarks ?? []).map((bookmark) => structuredClone(bookmark));
     this.prefabs = (project.prefabs ?? []).map((prefab) => structuredClone(prefab));
-    this.settings = { ...this.settings, ...(project.settings ?? {}) };
+    this.settings = { autosave: project.settings?.autosave ?? this.settings.autosave };
     const bindings = project.bindings?.length
       ? project.bindings
       : (project.entities ?? []).map((entity) => ({ sourceKey: `${entity.tileKey}|${entity.kind}|legacy|${entity.recordId}`, entity }));
