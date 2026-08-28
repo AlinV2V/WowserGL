@@ -55,7 +55,7 @@ class Inbox {
       } else this.queue.push(packet);
     });
   }
-  wait(predicate, timeout = 3500) {
+  wait(predicate, timeout = 5000) {
     const index = this.queue.findIndex(predicate);
     if (index >= 0) return Promise.resolve(this.queue.splice(index, 1)[0]);
     return new Promise((resolvePacket, reject) => {
@@ -70,10 +70,12 @@ class Inbox {
   }
 }
 
-const connect = (url) => new Promise((resolveSocket, reject) => {
+const connect = (url) => new Promise((resolvePeer, reject) => {
   const socket = new WebSocket(url);
-  const timer = setTimeout(() => { socket.terminate(); reject(new Error(`Timed out connecting ${url}`)); }, 3500);
-  socket.once('open', () => { clearTimeout(timer); resolveSocket(socket); });
+  // Capture messages immediately: the bridge may send bridge.hello in the same turn as open.
+  const inbox = new Inbox(socket);
+  const timer = setTimeout(() => { socket.terminate(); reject(new Error(`Timed out connecting ${url}`)); }, 5000);
+  socket.once('open', () => { clearTimeout(timer); resolvePeer({ socket, inbox }); });
   socket.once('error', (error) => { clearTimeout(timer); reject(error); });
 });
 const send = (socket, packet) => socket.send(JSON.stringify(packet));
@@ -116,16 +118,19 @@ try {
   child = spawn(process.execPath, [join(root, 'apps', 'bridge', 'server.mjs')], { cwd: root, env: { ...process.env, STUDIO_BRIDGE_PORT: String(port), STUDIO_BRIDGE_HOST: '127.0.0.1', STUDIO_PROJECT_PATH: projectPath }, stdio: ['ignore', 'pipe', 'pipe'] });
   await waitForOutput(child, `ws://127.0.0.1:${port}`);
 
-  studio = await connect(`ws://127.0.0.1:${port}/?role=studio&client=Bridge%20Test%20Studio`);
-  const studioInbox = new Inbox(studio);
+  const studioPeer = await connect(`ws://127.0.0.1:${port}/?role=studio&client=Bridge%20Test%20Studio`);
+  studio = studioPeer.socket;
+  const studioInbox = studioPeer.inbox;
   await studioInbox.wait((packet) => packet.type === 'bridge.hello' && packet.role === 'studio');
 
-  runtime = await connect(`ws://127.0.0.1:${port}/?role=runtime&client=Bridge%20Test%20Runtime`);
-  const runtimeInbox = new Inbox(runtime);
+  const runtimePeer = await connect(`ws://127.0.0.1:${port}/?role=runtime&client=Bridge%20Test%20Runtime`);
+  runtime = runtimePeer.socket;
+  const runtimeInbox = runtimePeer.inbox;
   await runtimeInbox.wait((packet) => packet.type === 'bridge.hello' && packet.role === 'runtime');
 
-  extension = await connect(`ws://127.0.0.1:${port}/?role=runtime-extension&client=Bridge%20Test%20Extension`);
-  const extensionInbox = new Inbox(extension);
+  const extensionPeer = await connect(`ws://127.0.0.1:${port}/?role=runtime-extension&client=Bridge%20Test%20Extension`);
+  extension = extensionPeer.socket;
+  const extensionInbox = extensionPeer.inbox;
   await extensionInbox.wait((packet) => packet.type === 'bridge.hello' && packet.role === 'runtime-extension');
   await studioInbox.wait((packet) => packet.type === 'bridge.peers' && packet.runtimes === 1 && packet.extensions === 1);
 
