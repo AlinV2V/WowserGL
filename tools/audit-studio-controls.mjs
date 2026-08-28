@@ -7,7 +7,7 @@ const read = (path) => readFileSync(join(root, path), 'utf8');
 const has = (source, fragment, label = fragment) => assert.ok(source.includes(fragment), `Missing control/backend path: ${label}`);
 const lacks = (source, fragment, label = fragment) => assert.ok(!source.includes(fragment), `Stale control/pipeline remains: ${label}`);
 const occurrences = (source, fragment) => source.split(fragment).length - 1;
-const renderedButtonMarkers = (source) => [...new Set([...source.matchAll(/<button\b[^>]*\b(data-[\w-]+)(?:=|\s|>)/g)].map((match) => match[1]))];
+const renderedButtonMarkers = (source) => [...new Set([...source.matchAll(/<button\b[^>]*?\b(data-[\w-]+)(?:=|\s|>)/g)].map((match) => match[1]))];
 
 const editor = read('apps/editor/src/editor-app.ts');
 const shell = read('apps/editor/src/engine/shell-controls.ts');
