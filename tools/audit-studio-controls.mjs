@@ -6,6 +6,14 @@ const root = resolve(new URL('..', import.meta.url).pathname.replace(/^\/(?:([A-
 const read = (path) => readFileSync(join(root, path), 'utf8');
 const has = (source, fragment, label = fragment) => assert.ok(source.includes(fragment), `Missing control/backend path: ${label}`);
 const lacks = (source, fragment, label = fragment) => assert.ok(!source.includes(fragment), `Stale control/pipeline remains: ${label}`);
+const occurrences = (source, fragment) => source.split(fragment).length - 1;
+const auditRenderedButtons = (label, source) => {
+  const markers = [...new Set([...source.matchAll(/<button\b[^>]*\b(data-[\w-]+)(?:=|\s|>)/g)].map((match) => match[1]))];
+  for (const marker of markers) {
+    assert.ok(occurrences(source, marker) >= 2, `Rendered ${label} button ${marker} has no visible binding/reference path`);
+  }
+  return markers.length;
+};
 
 const editor = read('apps/editor/src/editor-app.ts');
 const shell = read('apps/editor/src/engine/shell-controls.ts');
@@ -20,9 +28,11 @@ const inspector = read('apps/editor/src/editor-inspector.ts');
 const materials = read('apps/editor/src/editor-materials.ts');
 const environment = read('apps/editor/src/editor-environment.ts');
 const palette = read('apps/editor/src/editor-palette.ts');
+const hierarchy = read('apps/editor/src/editor-hierarchy.ts');
 const componentInspector = read('apps/editor/src/engine/component-inspector.ts');
 const tools = read('apps/editor/src/engine/engine-tools-panel.ts');
 const globalAssets = read('apps/editor/src/engine/global-asset-browser.ts');
+const prefabBrowser = read('apps/editor/src/engine/prefab-browser.ts');
 const customContent = read('apps/editor/src/engine/custom-content-authoring.ts');
 const terrain = read('apps/editor/src/engine/terrain-authoring.ts');
 const lockGuards = read('apps/editor/src/engine/lock-guards.ts');
@@ -100,8 +110,8 @@ has(customContent, 'terrain: this.terrain.snapshot()', 'terrain package consumer
 lacks(terrain, "pushTerrain", 'no fake terrain runtime push');
 
 for (const marker of [
-  'data-content-preview', 'data-content-export', 'data-capture-variant', 'data-variant-duplicate',
-  'data-behavior-mode', 'data-behavior-studio', 'data-behavior-game', 'data-action-add',
+  'data-content-preview', 'data-content-export', 'data-capture-variant', 'data-variant-apply', 'data-variant-push', 'data-variant-duplicate', 'data-variant-remove',
+  'data-behavior-mode', 'data-behavior-studio', 'data-behavior-stop', 'data-behavior-game', 'data-action-add',
   'data-char-preview', 'data-char-clear', 'data-char-equipment',
   'data-quest-enabled', 'data-quest-objectives', 'data-interaction-type',
 ]) has(customContent, marker, `Custom content ${marker}`);
@@ -130,4 +140,12 @@ has(foundation, 'new TerrainAuthoring', 'terrain subsystem installation');
 has(foundation, 'new CustomWorldAuthoring', 'custom world subsystem installation');
 has(foundation, 'new EditorLockGuards', 'lock guard installation');
 
-console.log(`[engine-test] audited ${menus.length} menus, editor windows, custom world/terrain pipelines and ${commandTypes.length} live command families`);
+const buttonModules = [
+  ['EditorApp', editor], ['BottomPanel', bottom], ['Hierarchy', hierarchy], ['Inspector', inspector], ['Materials', materials],
+  ['ComponentInspector', componentInspector], ['EngineTools', tools], ['ContentBrowser', globalAssets], ['PrefabBrowser', prefabBrowser],
+  ['GameView', game], ['Terrain', terrain], ['CustomContent', customContent], ['WoWTools', wowTools],
+];
+let auditedRenderedButtons = 0;
+for (const [label, source] of buttonModules) auditedRenderedButtons += auditRenderedButtons(label, source);
+
+console.log(`[engine-test] audited ${menus.length} menus, ${auditedRenderedButtons} rendered data-button bindings, custom world/terrain pipelines and ${commandTypes.length} live command families`);
