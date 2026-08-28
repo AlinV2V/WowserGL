@@ -1,7 +1,10 @@
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import process from 'node:process';
 
 const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+const index = spawnSync(process.execPath, ['tools/index-cleanclient-assets.mjs', '--if-available'], { stdio: 'inherit', env: process.env });
+if (index.status && index.status !== 0) console.warn(`[studio] asset indexing exited with code ${index.status}; Studio will continue with the local-tile browser.`);
+
 const children = [
   spawn(npm, ['--workspace', '@wowsergl/bridge', 'run', 'start'], { stdio: 'inherit', env: process.env }),
   spawn(npm, ['--workspace', '@wowsergl/editor', 'run', 'dev'], { stdio: 'inherit', env: process.env }),

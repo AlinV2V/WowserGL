@@ -123,8 +123,8 @@ export class EditorApp {
           </div>
           <div class="play-controls">
             <button class="play-button" data-play title="Play / attach runtime">▶</button>
-            <button data-pause title="Pause live runtime">Ⅱ</button>
-            <button data-step title="Step">▹|</button>
+            <button data-pause title="Pause Studio preview simulation">Ⅱ</button>
+            <button data-step title="Step Studio preview simulation">▹|</button>
           </div>
           <div class="tool-group live-tools">
             <button data-live-sync class="live-sync"><span class="sync-dot"></span> Live Sync</button>
@@ -142,7 +142,7 @@ export class EditorApp {
         <section class="scene-dock">
           <div class="dock-tabs scene-tabs"><button class="active">Scene</button><button data-game-tab>Game</button><span></span><button data-gizmos class="active">Gizmos</button></div>
           <section class="viewport" data-viewport>
-            <div class="scene-overlay scene-overlay-left"><button>Shaded ▾</button><button>2D</button><button>Audio</button></div>
+            <div class="scene-overlay scene-overlay-left"><button>Shaded ▾</button><button>2D</button><button>Audio Assets</button></div>
             <div class="axis-widget"><span class="axis-z">Z</span><span class="axis-y">Y</span><span class="axis-x">X</span></div>
             <div class="viewport-help">RMB + WASD fly · Shift boost · Alt orbit · F frame selection · Ctrl+D duplicate · Del remove</div>
             <div class="viewport-badge">Scene · WebGL2 · Three.js r176</div>
@@ -210,7 +210,6 @@ export class EditorApp {
       (event.currentTarget as HTMLButtonElement).classList.toggle('active', active);
     });
     this.root.querySelector('[data-open-game]')!.addEventListener('click', () => this.bridge.openGame());
-    this.root.querySelector('[data-game-tab]')!.addEventListener('click', () => this.bridge.openGame());
     this.root.querySelector('[data-push-all]')!.addEventListener('click', () => this.pushAll());
     this.root.querySelector('[data-save-project]')!.addEventListener('click', () => this.saveProject());
     this.liveSyncButton.addEventListener('click', () => {
@@ -273,12 +272,6 @@ export class EditorApp {
     });
 
     const fileInput = this.root.querySelector<HTMLInputElement>('[data-import-file]')!;
-    for (const menuButton of this.root.querySelectorAll<HTMLButtonElement>('[data-menu]')) {
-      menuButton.addEventListener('click', () => {
-        if (menuButton.dataset.menu === 'file') fileInput.click();
-        if (menuButton.dataset.menu === 'edit') this.history.undo();
-      });
-    }
     fileInput.addEventListener('change', async () => {
       const file = fileInput.files?.[0];
       if (!file) return;
@@ -527,9 +520,23 @@ export class EditorApp {
       clone.addEventListener('click', () => { fn(); close(); }, { once: true });
     };
     once('[data-context-focus]', () => this.camera.focus(record.object));
-    once('[data-context-duplicate]', () => this.store.duplicate(record));
+    once('[data-context-duplicate]', () => {
+      let copy: EditorRecord | null = null;
+      this.history.execute({
+        label: `Duplicate ${record.model}`,
+        redo: () => { copy = this.store.duplicate(record); },
+        undo: () => { if (copy) this.store.remove(copy); },
+      });
+    });
     once('[data-context-push]', () => this.pushRecord(record));
-    once('[data-context-delete]', () => this.store.remove(record));
+    once('[data-context-delete]', () => {
+      const previous = record.state;
+      this.history.execute({
+        label: `Delete ${record.model}`,
+        redo: () => this.store.remove(record),
+        undo: () => this.store.restore(record, previous),
+      });
+    });
   }
 
   private updateBridgeUi() {
@@ -583,7 +590,6 @@ export class EditorApp {
     const dt = Math.min(0.05, (now - this.lastTime) / 1000);
     this.lastTime = now;
     this.camera.update(dt);
-    this.environment.update(dt, this.camera.active.position);
     this.renderer.render(this.scene, this.camera.active);
   };
 

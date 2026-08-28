@@ -16,6 +16,10 @@ export const applySnapshot = (object: THREE.Object3D, snapshot: TransformSnapsho
   object.updateMatrixWorld(true);
 };
 
+export const isRecordLocked = (record: EditorRecord | null | undefined) => !!record && (
+  record.object.userData.studioLocked === true || record.object.userData.studioLayerLocked === true
+);
+
 const objectStats = (root: THREE.Object3D) => {
   let triangles = 0;
   const textures = new Set<string>();
@@ -120,6 +124,7 @@ export class EditorObjectStore extends EventTarget {
     };
     object.userData.editorRecordId = copy.id;
     object.userData.editorSelectable = true;
+    object.userData.editorDuplicatedFrom = record.id;
     this.records.set(copy.id, copy);
     this.select(copy);
     this.changed(copy);
