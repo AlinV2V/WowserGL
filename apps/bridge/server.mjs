@@ -19,12 +19,13 @@ try {
 }
 
 const counts = () => {
-  let runtimes = 0, studios = 0;
+  let runtimes = 0, extensions = 0, studios = 0;
   for (const client of clients.values()) {
     if (client.role === 'runtime') runtimes++;
+    if (client.role === 'runtime-extension') extensions++;
     if (client.role === 'studio') studios++;
   }
-  return { runtimes, studios };
+  return { runtimes, extensions, studios };
 };
 
 const send = (socket, packet) => {
@@ -33,6 +34,11 @@ const send = (socket, packet) => {
 
 const broadcast = (role, packet) => {
   for (const [socket, client] of clients) if (client.role === role) send(socket, packet);
+};
+
+const broadcastRuntimeCommand = (packet) => {
+  broadcast('runtime', packet);
+  broadcast('runtime-extension', packet);
 };
 
 const announcePeers = () => {
@@ -54,14 +60,16 @@ const server = http.createServer((request, response) => {
 const wss = new WebSocketServer({ server });
 wss.on('connection', (socket, request) => {
   const url = new URL(request.url ?? '/', `http://${request.headers.host ?? `${host}:${port}`}`);
-  const role = url.searchParams.get('role') === 'runtime' ? 'runtime' : 'studio';
-  const name = url.searchParams.get('client') || (role === 'runtime' ? 'VanillaGL Runtime' : 'Studio');
+  const requestedRole = url.searchParams.get('role');
+  const role = requestedRole === 'runtime' ? 'runtime' : requestedRole === 'runtime-extension' ? 'runtime-extension' : 'studio';
+  const defaultName = role === 'runtime' ? 'VanillaGL Runtime' : role === 'runtime-extension' ? 'VanillaGL Runtime Extension' : 'Studio';
+  const name = url.searchParams.get('client') || defaultName;
   const id = randomUUID();
   clients.set(socket, { id, role, name });
   const peerCounts = counts();
   send(socket, { type: 'bridge.hello', role, id, ...peerCounts, cachedProject: cachedProject ?? undefined });
   announcePeers();
-  console.log(`[bridge] ${role} connected: ${name} (${peerCounts.studios} studio / ${peerCounts.runtimes} runtime)`);
+  console.log(`[bridge] ${role} connected: ${name} (${peerCounts.studios} studio / ${peerCounts.runtimes} runtime / ${peerCounts.extensions} extension)`);
 
   socket.on('message', async (data) => {
     let packet;
@@ -76,8 +84,8 @@ wss.on('connection', (socket, request) => {
 
     if (client.role === 'studio' && packet.type === 'bridge.command') {
       if (packet.command?.type === 'project.apply' && packet.persist) cachedProject = packet.command.project;
-      broadcast('runtime', packet);
-      if (counts().runtimes === 0) {
+      broadcastRuntimeCommand(packet);
+      if (counts().runtimes === 0 && counts().extensions === 0) {
         send(socket, { type: 'bridge.log', level: 'warn', message: `${packet.command?.type ?? 'command'} queued with no runtime connected.` });
       }
       return;
@@ -96,7 +104,7 @@ wss.on('connection', (socket, request) => {
       return;
     }
 
-    if (client.role === 'runtime' && (packet.type === 'bridge.ack' || packet.type === 'bridge.log' || packet.type === 'runtime.state')) {
+    if ((client.role === 'runtime' || client.role === 'runtime-extension') && (packet.type === 'bridge.ack' || packet.type === 'bridge.log' || packet.type === 'runtime.state')) {
       const enriched = { ...packet, runtime: client.name };
       broadcast('studio', enriched);
     }
